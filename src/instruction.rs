@@ -33,23 +33,39 @@ pub enum Instruction {
     OR_n = 0xB0,
     XOR_n = 0xAF,
     CP_n = 0xFE,
+
+    RLCA = 0x07,
     RLA = 0x17,
+    RRCA = 0x0F,
+    RRA = 0x1F,
+
+    DAA = 0x27,
 
     INC_n = 0x3C,
     INC_nn = 0x23,
     DEC_n = 0x25,
     DEC_nn = 0x0B,
 
+    CPL = 0x2F,
+    CCF = 0x3F,
+    SCF = 0x37,
+
+    HALT = 0x76,
+    STOP = 0x10, // actually 10 00, but no other opcode with 10
+    EI = 0xFB,
+
     JP_nn = 0xC3,
     JP_HLptr = 0xE9,
     JP_cc_nn = 0xC2,
     JR_cc_n = 0x38,
     JR_n = 0x18,
+    RST_n = 0xC7,
 
     CALL_cc_nn = 0xC4,
     CALL_nn = 0xCD,
     RET = 0xC9,
     RET_cc = 0xC0,
+    RETI = 0xD9,
 
     PUSH_nn = 0xF5,
     POP_nn = 0xE1,
@@ -63,7 +79,17 @@ pub enum Instruction {
 #[derive(Debug, PartialEq)]
 pub enum CB_Instruction {
     BIT_b_r(u8, u8),
+    RES_b_r(u8, u8),
+    SET_b_r(u8, u8),
+
     RL_n(u8),
+    RLC_n(u8),
+    RR_n(u8),
+    RRC_n(u8),
+    SLA_n(u8),
+    SRA_n(u8),
+    SRL_n(u8),
+
     SWAP_n(u8),
 }
 
@@ -98,25 +124,62 @@ pub fn parse(byte: u8) -> Option<Instruction> {
         0xA0...0xA7 | 0xE6 => Some(Instruction::AND_n),
         0xB0...0xB7 | 0xF6 => Some(Instruction::OR_n),
         0x09 | 0x19 | 0x29 | 0x39 => Some(Instruction::ADD_HL_n),
+        0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => Some(Instruction::RST_n),
         _ => Instruction::from_u8(byte),
     }
 }
 
 pub fn parse_cb(byte: u8) -> Option<CB_Instruction> {
     match byte {
+        0x00...0x07 => {
+            let byte = byte - 0x00;
+            Some(CB_Instruction::RLC_n(byte))
+        }
+        0x08...0x0F => {
+            let byte = byte - 0x08;
+            Some(CB_Instruction::RRC_n(byte))
+        }
+        0x10...0x17 => {
+            let byte = byte - 0x10;
+            Some(CB_Instruction::RL_n(byte))
+        }
+        0x18...0x1F => {
+            let byte = byte - 0x18;
+            Some(CB_Instruction::RR_n(byte))
+        }
+        0x20...0x27 => {
+            let byte = byte - 0x20;
+            Some(CB_Instruction::SLA_n(byte))
+        }
+        0x28...0x2F => {
+            let byte = byte - 0x28;
+            Some(CB_Instruction::SRA_n(byte))
+        }
+        0x30...0x37 => {
+            let byte = byte - 0x30;
+            Some(CB_Instruction::SWAP_n(byte))
+        }
+        0x38...0x3F => {
+            let byte = byte - 0x38;
+            Some(CB_Instruction::SRL_n(byte))
+        }
         0x40...0x7F => {
             let byte = byte - 0x40;
             let b = byte / 8;
             let r = byte % 8;
             Some(CB_Instruction::BIT_b_r(b, r))
         }
-        0x10...0x17 => {
-            let byte = byte - 0x10;
-            Some(CB_Instruction::RL_n(byte))
+        0x80...0xBF => {
+            let byte = byte - 0x80;
+            let b = byte / 8;
+            let r = byte % 8;
+            Some(CB_Instruction::RES_b_r(b, r))
         }
-        0x30...0x37 => {
-            let byte = byte - 0x30;
-            Some(CB_Instruction::SWAP_n(byte))
+        0xC0...0xFF => {
+            let byte = byte - 0xC0;
+            let b = byte / 8;
+            let r = byte % 8;
+            Some(CB_Instruction::SET_b_r(b, r))
         }
         _ => None,
     }

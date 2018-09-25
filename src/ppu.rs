@@ -193,6 +193,10 @@ impl Ppu {
             }
         }
     }
+
+    pub fn turn_lcd_off(&mut self) {
+        // TODO:
+    }
     pub fn read(&self, address: u16) -> Option<u8> {
         match address {
             0xFF40 => Some(self.LCD_control),
