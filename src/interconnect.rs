@@ -2,7 +2,18 @@ use super::ppu::*;
 use super::sound_subsystem::*;
 use super::timer::*;
 use crate::memory_map::*;
+use enum_primitive_derive::*;
+use num_traits::{FromPrimitive, ToPrimitive};
 
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy, Primitive)]
+// The value is interrupt priority
+pub enum Interrupt {
+    VBLANK = 0,
+    LCDStatus = 1,
+    TimerOverflow = 2,
+    SerialTransfer = 3,
+    Joypad = 4,
+}
 #[derive(Debug)]
 pub struct Interconnect {
     rom: Vec<u8>,
@@ -15,6 +26,9 @@ pub struct Interconnect {
     pub ppu: Ppu,
     sound: SoundSubsystem,
     timer: Timer,
+
+    interrupt_flag: u8,
+    interrupt_enable: u8,
 
     booting: bool,
 }
@@ -30,6 +44,8 @@ impl Interconnect {
             ppu: Ppu::new(),
             sound: SoundSubsystem::new(),
             timer: Timer::new(),
+            interrupt_flag: 0,
+            interrupt_enable: 0,
             booting: true,
         }
     }
@@ -58,7 +74,14 @@ impl Interconnect {
                 if self.timer.write(address, value) {
                     return;
                 }
-                panic!("Write to IO port. Not implemented: {:04x}", address)
+
+                match address {
+                    0xFF0F => self.interrupt_flag = value,
+                    _ => panic!(
+                        "Write to IO port. Not implemented: 0x{:04x}, val: 0x{:02x}",
+                        address, value
+                    ),
+                }
             }
             INTERNAL_RAM_START..INTERNAL_RAM_END => {
                 self.internal_ram[(address - INTERNAL_RAM_START) as usize] = value;
@@ -75,9 +98,10 @@ impl Interconnect {
             SPRITE_MEM_START..SPRITE_MEM_END => {
                 self.ppu.write_sprite_mem(address, value);
             }
+            INTERRUPT_REGISTER => self.interrupt_enable = value,
             _ => panic!(
-                "Interconnect: Can't write memory address: 0x{:04x}",
-                address
+                "Interconnect: Can't write memory address: 0x{:04x}, value: 0x{:02x}",
+                address, value
             ),
         }
     }
@@ -102,7 +126,10 @@ impl Interconnect {
                 if let Some(ret) = res {
                     return ret;
                 }
-                panic!("Read to unknown IO port: {:04x}", address)
+                match address {
+                    0xFF0F => self.interrupt_flag,
+                    _ => panic!("Read to unknown IO port: {:04x}", address),
+                }
             }
             ROM_BANK0_START..ROM_BANK0_END => {
                 // TODO: for now just reads from rom. Bank switching and stuff later
@@ -139,8 +166,22 @@ impl Interconnect {
                 self.switchable_ram_bank[(address - SWITCH_RAM_BANK_START) as usize]
             }
             SPRITE_MEM_START..SPRITE_MEM_END => self.ppu.read_sprite_mem(address),
+            INTERRUPT_REGISTER => self.interrupt_enable,
             _ => panic!("Interconnect: Can't read memory address: 0x{:04x}", address),
         }
+    }
+
+    pub fn get_interrupt(&mut self) -> Option<Interrupt> {
+        for i in 0..=4 {
+            if check_bit(self.interrupt_flag, i) && check_bit(self.interrupt_enable, i) {
+                // Asking for an interrupt means cpu will take it.
+                // So reset the interrupt flag
+                self.interrupt_flag &= !(1 << i);
+                // From_u8 already returns an option. However if something breaks this'll panic then
+                return Some(Interrupt::from_u8(i).unwrap());
+            }
+        }
+        None
     }
 
     pub fn update(&mut self) {
@@ -152,5 +193,24 @@ impl Interconnect {
     }
     pub fn boot(&self) -> &Vec<u8> {
         &self.boot
+    }
+}
+
+#[inline(always)]
+fn check_bit(val: u8, b: u8) -> bool {
+    val & (1 << b) > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_bit() {
+        assert!(check_bit(0b0100_0000, 6));
+        assert!(check_bit(0b0000_1000, 3));
+        assert!(check_bit(0b0100_0001, 0));
+        assert!(!check_bit(0b0100_0001, 3));
+        assert!(!check_bit(0b0100_0001, 7));
     }
 }

@@ -7,13 +7,6 @@ use super::ppu::Color;
 const CPU_FREQ: f32 = 4.194304;
 
 #[derive(Debug, PartialEq)]
-enum InterruptState {
-    Enabled,
-    EnableNext,
-    Disabled,
-    DisableNext,
-}
-#[derive(Debug, PartialEq)]
 enum CpuState {
     On,
     OffUntilInterrupt,
@@ -45,10 +38,15 @@ pub struct Cpu {
     */
     flag_c: bool,
 
+    // Interrupt related flags
+    // Interrupt master flag
+    flag_ime: bool,
+    flag_disabling_interrupts: bool,
+    flag_enabling_interrupts: bool,
+
     pub interconnect: Interconnect,
     cycles: i32,
     cpu_state: CpuState,
-    interrupt_state: InterruptState,
 }
 
 impl Cpu {
@@ -70,10 +68,12 @@ impl Cpu {
             flag_h: false, // Half Carry flag
             flag_c: false, // Carry flag
 
+            flag_ime: false,
+            flag_disabling_interrupts: false,
+            flag_enabling_interrupts: false,
             interconnect,
             cycles: 0,
             cpu_state: CpuState::On,
-            interrupt_state: InterruptState::Enabled,
         }
     }
 
@@ -87,25 +87,47 @@ impl Cpu {
             return;
         }
 
-        if self.interrupt_state != InterruptState::Disabled {
+        if (self.cpu_state == CpuState::On || self.cpu_state == CpuState::OffUntilInterrupt)
+            && self.flag_ime
+        {
             self.handle_interrupts();
         }
         if self.cpu_state != CpuState::On {
             return;
         }
 
-        self.do_next_instrution();
+        // Handle the change interrupt flags
+        if self.flag_disabling_interrupts {
+            self.flag_disabling_interrupts = false;
+            self.flag_ime = false;
+        }
+        if self.flag_enabling_interrupts {
+            self.flag_enabling_interrupts = false;
+            self.flag_ime = true;
+        }
 
-        if self.interrupt_state == InterruptState::DisableNext {
-            self.interrupt_state = InterruptState::Disabled;
-        }
-        if self.interrupt_state == InterruptState::EnableNext {
-            self.interrupt_state = InterruptState::Enabled;
-        }
+        self.do_next_instrution();
     }
 
     fn handle_interrupts(&mut self) {
-        // TODO:
+        let interrupt = match self.interconnect.get_interrupt() {
+            Some(i) => i,
+            None => return,
+        };
+        // If was in OffUntilInterrupt state
+        self.cpu_state = CpuState::On;
+
+        // Jump to interrupt address
+        self.push_stack_u16(self.reg_pc);
+        self.reg_pc = match interrupt {
+            Interrupt::VBLANK => 0x0040,
+            Interrupt::LCDStatus => 0x0048,
+            Interrupt::TimerOverflow => 0x0050,
+            Interrupt::SerialTransfer => 0x0058,
+            Interrupt::Joypad => 0x0060,
+        };
+        // Disable interrupts
+        self.flag_ime = false;
     }
 
     fn do_next_instrution(&mut self) {
@@ -716,11 +738,11 @@ impl Cpu {
                 self.add_cycles(8);
             }
             Instruction::DI => {
-                self.interrupt_state = InterruptState::DisableNext;
+                self.flag_disabling_interrupts = true;
                 self.add_cycles(4);
             }
             Instruction::EI => {
-                self.interrupt_state = InterruptState::EnableNext;
+                self.flag_enabling_interrupts = true;
                 self.add_cycles(4);
             }
             Instruction::CALL_cc_nn => {
@@ -797,7 +819,7 @@ impl Cpu {
             Instruction::RETI => {
                 let address = self.pop_stack_u16();
                 self.reg_pc = address;
-                self.interrupt_state = InterruptState::Enabled;
+                self.flag_ime = true;
                 self.add_cycles(8);
             }
             Instruction::JP_cc_nn => {
@@ -819,8 +841,6 @@ impl Cpu {
                 self.add_cycles(8);
             }
             Instruction::CB => self.handle_cb_opcode(),
-
-            _ => panic!("0x{:04x} Inst not implemented: {:?}", self.reg_pc - 1, inst),
         }
     }
 
@@ -1087,8 +1107,6 @@ impl Cpu {
                         self.add_cycles(8);
                     }
                 }
-
-                _ => panic!("Unimplemented cb instruction: {:?}", inst),
             }
         }
     }
