@@ -12,6 +12,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::Path;
 
+mod cartridge;
 mod cpu;
 mod instruction;
 mod interconnect;
@@ -26,7 +27,7 @@ const HEIGHT: usize = 256;
 fn main() -> io::Result<()> {
     let boot = read_file("resources/boot/DMG_ROM.bin")?;
     //let rom = read_file("resources/roms/Tetris-USA.gb")?;
-    let rom = read_file("resources/roms/Tetris-USA.gb")?;
+    let rom = cartridge::Cartridge::new(read_file("resources/roms/Tetris-USA.gb")?);
     let ic = interconnect::Interconnect::new(boot, rom);
     let mut cpu = cpu::Cpu::new(ic);
 

@@ -12,7 +12,7 @@ enum CpuState {
     OffUntilInterrupt,
     OffUntilButtonPress,
 }
-#[derive(Debug)]
+
 pub struct Cpu {
     reg_a: u8,
     reg_b: u8,
