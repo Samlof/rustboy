@@ -47,6 +47,9 @@ pub struct Cpu {
     pub interconnect: Interconnect,
     cycles: i32,
     cpu_state: CpuState,
+
+    // Debug variables
+    print_instructions: bool,
 }
 
 impl Cpu {
@@ -74,6 +77,8 @@ impl Cpu {
             interconnect,
             cycles: 0,
             cpu_state: CpuState::On,
+
+            print_instructions: false,
         }
     }
 
@@ -139,517 +144,804 @@ impl Cpu {
                 return;
             }
         };
-        if false {
-            if opcode != 0xCB {
-                println!(
-                    "0x{:04x} op: 0x{:02x} inst: '{:?}'",
-                    self.reg_pc - 1,
-                    opcode,
-                    inst
-                );
-            }
+
+        if self.print_instructions {
+            self.print_registers();
+            print!("0x{:04x} ", self.reg_pc - 1);
         }
-        self.execute_instruction(opcode, inst);
-    }
+        self.add_cycles(4);
 
-    fn execute_instruction(&mut self, opcode: u8, inst: Instruction) {
         match inst {
-            Instruction::LD_nn_n => {
-                let value = self.read_byte();
-
-                let reg = (opcode - 6) / 8;
-                self.set_reg_r(reg, value);
-
-                self.add_cycles(8);
+            Instruction::LD_r1_r2(r1, r2) => {
+                if self.print_instructions {
+                    println!("LD {}, {}", reg_char(r1), reg_char(r2));
+                }
+                let value = self.read_reg_r(r2);
+                self.write_reg_r(r1, value);
             }
-            Instruction::LD_n_nn => {
-                // LD n,nn
-                let value = u8s_as_u16(self.read_nn());
-                // Match to see which registers to use
-                match opcode {
-                    0x01 => self.set_bc(value),
-                    0x11 => self.set_de(value),
-                    0x21 => self.set_hl(value),
-                    0x31 => self.reg_sp = value,
+            Instruction::LD_r1_n(r1) => {
+                let value = self.read_byte();
+                if self.print_instructions {
+                    println!("LD {}, ${:02x}", reg_char(r1), value);
+                }
+                self.write_reg_r(r1, value);
+            }
+            Instruction::LD_A_nnptr => {
+                self.reg_a = match opcode {
+                    0x0A => {
+                        if self.print_instructions {
+                            println!("LD A, (BC)");
+                        };
+                        self.read_mem(self.bc())
+                    }
+                    0x1A => {
+                        if self.print_instructions {
+                            println!("LD A, (DE)");
+                        };
+                        self.read_mem(self.de())
+                    }
+                    0xFA => {
+                        let address = u8s_as_u16(self.read_nn());
+                        if self.print_instructions {
+                            println!("LD A, $({:04x})", address);
+                        };
+                        self.read_mem(address)
+                    }
                     _ => unreachable!(),
                 };
+            }
+            Instruction::LD_nnptr_A => {
+                match opcode {
+                    0x02 => {
+                        if self.print_instructions {
+                            println!("LD (BC), A");
+                        };
+                        self.write_mem(self.bc(), self.reg_a);
+                    }
+                    0x12 => {
+                        if self.print_instructions {
+                            println!("LD (DE), A");
+                        };
+                        self.write_mem(self.de(), self.reg_a);
+                    }
+                    0xEA => {
+                        let address = u8s_as_u16(self.read_nn());
+                        if self.print_instructions {
+                            println!("LD 0x({:04x}), A", address);
+                        };
+                        self.write_mem(address, self.reg_a);
+                    }
+                    _ => unreachable!(),
+                };
+            }
+            Instruction::LD_A_Cptr => {
+                let address = 0xFF00 + self.reg_c as u16;
+                if self.print_instructions {
+                    println!("LD A, ($FF00+C)");
+                }
+                self.reg_a = self.read_mem(address);
+            }
+            Instruction::LD_Cptr_A => {
+                let address = 0xFF00 + self.reg_c as u16;
+                if self.print_instructions {
+                    println!("LD (C), A");
+                }
+                self.write_mem(address, self.reg_a);
+            }
+            Instruction::LDD_A_HLptr => {
+                if self.print_instructions {
+                    println!("LD A, (HL-)");
+                }
+                let address = self.hl();
+                self.reg_a = self.read_mem(address);
+                self.set_hl(address - 1);
+            }
+            Instruction::LDD_HLptr_A => {
+                if self.print_instructions {
+                    println!("LD (HL-), A");
+                }
+                let address = self.hl();
+                self.write_mem(address, self.reg_a);
+                self.set_hl(address - 1);
+            }
+            Instruction::LDI_A_HLptr => {
+                if self.print_instructions {
+                    println!("LD A, (HL+)");
+                }
+                let address = self.hl();
+                self.reg_a = self.read_mem(address);
+                self.set_hl(address + 1);
+            }
+            Instruction::LDI_HLptr_A => {
+                if self.print_instructions {
+                    println!("LD (HL-), A");
+                }
+                let address = self.hl();
+                self.write_mem(address, self.reg_a);
+                self.set_hl(address + 1);
+            }
 
+            Instruction::LDH_nptr_A => {
+                let byte = 0xFF00 + self.read_byte() as u16;
+                if self.print_instructions {
+                    println!("LDH $({:02x}), A", byte);
+                }
+                self.write_mem(byte, self.reg_a);
+            }
+            Instruction::LDH_A_nptr => {
+                let byte = 0xFF00 + self.read_byte() as u16;
+                if self.print_instructions {
+                    println!("LDH A, $({:02x})", byte);
+                }
+                self.reg_a = self.read_mem(byte);
+            }
+
+            Instruction::LD_rr_nn => {
+                let value = u8s_as_u16(self.read_nn());
+                match opcode {
+                    0x01 => {
+                        if self.print_instructions {
+                            println!("LD BC, ${:04x}", value);
+                        }
+                        self.set_bc(value);
+                    }
+                    0x11 => {
+                        if self.print_instructions {
+                            println!("LD DE, ${:04x}", value);
+                        }
+                        self.set_de(value);
+                    }
+                    0x21 => {
+                        if self.print_instructions {
+                            println!("LD HL, ${:04x}", value);
+                        }
+                        self.set_hl(value);
+                    }
+                    0x31 => {
+                        if self.print_instructions {
+                            println!("LD SP, ${:04x}", value);
+                        }
+                        self.reg_sp = value;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            Instruction::LD_SP_HL => {
+                if self.print_instructions {
+                    println!("LD SP,HL");
+                }
+                self.reg_sp = self.hl();
+                // Need to add 4 more to total 8
+                self.add_cycles(4);
+            }
+            Instruction::LDHL_SPn => {
+                // Sign extending
+                let n = ((self.read_byte() as i8) as i16) as u16;
+                if self.print_instructions {
+                    println!("LD HL, SP+${:02x}", n);
+                }
+                let result = self.reg_sp + n;
+                self.set_hl(result);
+
+                self.flag_z = false;
+                self.flag_n = false;
+
+                self.flag_h = ((self.reg_sp ^ n ^ result) & 0x10) == 0x10;
+                self.flag_c = ((self.reg_sp ^ n ^ result) & 0x100) == 0x100;
+
+                // Need to add 4 more to total 12
+                self.add_cycles(4);
+            }
+            Instruction::LD_nn_SP => {
+                let nn = u8s_as_u16(self.read_nn());
+                if self.print_instructions {
+                    println!("LD nn, SP");
+                }
+                // FIXME: Should add 1 here?
+                self.reg_sp = nn;
+
+                // Have to add 8 more to total 20
+                self.add_cycles(8);
+            }
+
+            Instruction::PUSH_nn => {
+                match opcode {
+                    0xF5 => {
+                        if self.print_instructions {
+                            println!("PUSH AF");
+                        }
+                        self.push_stack_u16(self.af());
+                    }
+                    0xC5 => {
+                        if self.print_instructions {
+                            println!("PUSH BC");
+                        }
+                        self.push_stack_u16(self.bc());
+                    }
+                    0xD5 => {
+                        if self.print_instructions {
+                            println!("PUSH DE");
+                        }
+                        self.push_stack_u16(self.de());
+                    }
+                    0xE5 => {
+                        if self.print_instructions {
+                            println!("PUSH HL");
+                        }
+                        self.push_stack_u16(self.hl());
+                    }
+                    _ => unreachable!(),
+                };
+                // Need to add 12 more to total 16
                 self.add_cycles(12);
             }
-            Instruction::LD_r1_r2 => {
-                let reg1 = (opcode - 0x40) / 8;
-                let reg2 = (opcode - 0x40) % 8;
-                let value = if reg2 == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
-                } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg2)
-                };
-                self.set_reg_r(reg1, value);
+            Instruction::POP_nn => {
+                let value = self.pop_stack_u16();
+                match opcode {
+                    0xF1 => {
+                        if self.print_instructions {
+                            println!("POP AF");
+                        }
+                        self.set_af(value);
+                    }
+                    0xC1 => {
+                        if self.print_instructions {
+                            println!("POP BC");
+                        }
+                        self.set_bc(value);
+                    }
+                    0xD1 => {
+                        if self.print_instructions {
+                            println!("POP DE");
+                        }
+                        self.set_de(value);
+                    }
+                    0xE1 => {
+                        if self.print_instructions {
+                            println!("POP HL");
+                        }
+                        self.set_hl(value);
+                    }
+                    _ => unreachable!(),
+                }
+                // Add 8 more to total 12
+                self.add_cycles(8);
             }
-            Instruction::LD_HL_ptr_r2 => {
-                let value = if opcode == 0x36 {
-                    self.add_cycles(12);
-                    self.read_byte()
+
+            Instruction::ADD_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("ADD ${:02x}", value);
+                    }
+                    value
                 } else {
-                    self.add_cycles(8);
-                    let reg = opcode - 0x70;
-                    self.read_reg_r(reg)
+                    if self.print_instructions {
+                        println!("ADD {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
                 };
-                self.write_mem(self.hl(), value);
-            }
-            Instruction::ADD_A_n => {
-                let reg = opcode - 0x80;
-                let value = if opcode == 0xC6 {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
-                } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
-                };
-                let old_value = self.reg_a;
-                self.reg_a = old_value.wrapping_add(value);
+                let result = self.reg_a as u16 + n as u16;
+                let carrybits = (self.reg_a ^ n) as u16 ^ result;
+                self.reg_a = result as u8;
 
                 self.flag_z = self.reg_a == 0;
                 self.flag_n = false;
-                // H - Set if carry from bit 3.
-                self.flag_h = (self.reg_a & 0xF) >= (old_value & 0xF);
-                // C - Set if carry from bit 7. So meaning if it overflowed
-                self.flag_c = self.reg_a < old_value;
+                self.flag_c = carrybits & 0x100 != 0;
+                self.flag_h = carrybits & 0x10 != 0;
             }
-            Instruction::SUB_n => {
-                let reg = opcode - 0x90;
-                let n = if opcode == 0xD6 {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
+            Instruction::ADC_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("ADC ${:02x}", value);
+                    }
+                    value
                 } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
+                    if self.print_instructions {
+                        println!("ADC {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
                 };
-                let old_value = self.reg_a;
-                self.reg_a = old_value.wrapping_sub(n);
+                let carry = self.flag_c as u16;
+                let result: u16 = self.reg_a as u16 + n as u16 + carry;
+
+                self.flag_z = result as u8 == 0;
+                self.flag_n = false;
+                self.flag_h = (self.reg_a & 0xF) + (n & 0xF) + carry as u8 > 0xF;
+                self.flag_c = result > 0xFF;
+
+                self.reg_a = result as u8;
+            }
+            Instruction::SUB_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("SUB ${:02x}", value);
+                    }
+                    value
+                } else {
+                    if self.print_instructions {
+                        println!("SUB {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
+                };
+                // FIXME: sign extend??
+                let result = self.reg_a as i16 - n as i16;
+                let carrybits = (self.reg_a ^ n) as i16 ^ result;
+                self.reg_a = result as u8;
 
                 self.flag_z = self.reg_a == 0;
-                self.flag_n == true;
-
-                // H - Set if no borrow from bit 4.
-                self.flag_h = (self.reg_a & 0xF) <= (old_value & 0xF);
-                // C - Set if no borrow.
-                self.flag_c = self.reg_a < old_value;
+                self.flag_n = true;
+                self.flag_h = carrybits & 0x10 != 0;
+                self.flag_c = carrybits & 0x100 != 0;
             }
-            Instruction::SBC_A_n => {
-                let reg = opcode - 0x98;
-                let value = if opcode == 0xDE {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
+            Instruction::SBC_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("SBC ${:02x}", value);
+                    }
+                    value
                 } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
+                    if self.print_instructions {
+                        println!("SBC {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
                 };
-                let old_value = self.reg_a;
-                self.reg_a = old_value.wrapping_sub(value);
-                // Add carry flag
-                if self.flag_c {
-                    self.reg_a.wrapping_add(1 << 7);
-                }
+                let carry = self.flag_c as i16;
+                // FIXME: sign extend??
+                let result = self.reg_a as i16 - n as i16 - carry;
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_n == true;
-
-                // H - Set if no borrow from bit 3.
-                self.flag_h = (self.reg_a & 0xF) <= (old_value & 0xF);
-                // C - Set if no borrow.
-                self.flag_c = self.reg_a < old_value;
+                self.flag_z = result as u8 == 0;
+                self.flag_n = true;
+                self.flag_c = result < 0;
+                self.flag_h = (self.reg_a as i16 & 0xF) - (n as i16 & 0xF) - carry < 0;
             }
-            Instruction::AND_n => {
-                let reg = opcode - 0xA0;
-                let value = if opcode == 0xE6 {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
+            Instruction::AND_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("AND ${:02x}", value);
+                    }
+                    value
                 } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
+                    if self.print_instructions {
+                        println!("AND {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
                 };
-
-                self.reg_a = self.reg_a & value;
+                self.reg_a = self.reg_a & n;
 
                 self.flag_z = self.reg_a == 0;
                 self.flag_n = false;
                 self.flag_h = true;
                 self.flag_c = false;
             }
-            Instruction::OR_n => {
-                let reg = opcode - 0xB0;
-                let value = if opcode == 0xF6 {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
+            Instruction::OR_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("OR ${:02x}", value);
+                    }
+                    value
                 } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
+                    if self.print_instructions {
+                        println!("OR {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
                 };
-
-                self.reg_a = self.reg_a | value;
+                self.reg_a = self.reg_a | n;
 
                 self.flag_z = self.reg_a == 0;
                 self.flag_n = false;
                 self.flag_h = false;
                 self.flag_c = false;
             }
-            Instruction::NOP => self.add_cycles(4),
-            Instruction::CALL_nn => {
-                let address = u8s_as_u16(self.read_nn());
-
-                self.push_stack_u16(self.reg_pc);
-
-                self.reg_pc = address;
-                self.add_cycles(12);
-            }
-            Instruction::PUSH_nn => {
-                let value = match opcode {
-                    0xF5 => self.af(),
-                    0xC5 => self.bc(),
-                    0xD5 => self.de(),
-                    0xE5 => self.hl(),
-                    _ => unreachable!(),
-                };
-                self.push_stack_u16(value);
-
-                self.add_cycles(16);
-            }
-            Instruction::CP_n => {
-                // Read what to compare with
-                let reg = (opcode - 0xB8);
-                let n = if opcode == 0xFE {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
+            Instruction::XOR_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("XOR ${:02x}", value);
+                    }
+                    value
                 } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
+                    if self.print_instructions {
+                        println!("XOR {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
                 };
-                // Do the comparing
-                let value = self.reg_a.wrapping_sub(n);
+                self.reg_a = self.reg_a ^ n;
 
-                self.flag_z = self.reg_a == n;
+                self.flag_z = self.reg_a == 0;
+                self.flag_n = false;
+                self.flag_h = false;
+                self.flag_c = false;
+            }
+            Instruction::CP_n(n) => {
+                let n = if n == 8 {
+                    let value = self.read_byte();
+                    if self.print_instructions {
+                        println!("CP ${:02x}", value);
+                    }
+                    value
+                } else {
+                    if self.print_instructions {
+                        println!("CP {}", reg_char(n));
+                    }
+                    self.read_reg_r(n)
+                };
                 self.flag_n = true;
-
-                // H - Set if no borrow from bit 3.
-                self.flag_h = (value & 0xF) < (self.reg_a & 0xF);
-                // C - Set if no borrow. or reg_a < n
                 self.flag_c = self.reg_a < n;
+                self.flag_z = self.reg_a == n;
+                self.flag_h = (self.reg_a.wrapping_sub(n)) & 0xF > self.reg_a & 0xF;
             }
-            Instruction::JP_nn => {
-                let addr = u8s_as_u16(self.read_nn());
-                self.reg_pc = addr;
-                self.add_cycles(12);
-            }
-            Instruction::JP_HLptr => {
-                // Turn it around because little endian
-                let second_part = self.read_mem(self.hl()) as u16;
-                let first_part = self.read_mem(self.hl() + 1) as u16;
-                self.reg_pc = (second_part << 8) | first_part;
-                self.add_cycles(4);
-            }
-            Instruction::LD_A_n => match opcode {
-                0x78...0x7F if opcode != 0x7E => {
-                    let reg = opcode - 0x78;
-                    self.reg_a = self.read_reg_r(reg);
-                    self.add_cycles(4);
-                }
-                0x3E => {
-                    self.reg_a = self.read_byte();
-                    self.add_cycles(8);
-                }
-                0x0A => {
-                    let address = self.bc();
-                    self.reg_a = self.read_mem(address);
-                    self.add_cycles(8);
-                }
-                0x1A => {
-                    let address = self.de();
-                    self.reg_a = self.read_mem(address);
-                    self.add_cycles(8);
-                }
-                0x7E => {
-                    let address = self.hl();
-                    self.reg_a = self.read_mem(address);
-                    self.add_cycles(8);
-                }
-                0xFA => {
-                    let address = u8s_as_u16(self.read_nn());
-                    self.reg_a = self.read_mem(address);
-                    self.add_cycles(16);
-                }
-                _ => unreachable!(),
-            },
-            Instruction::LD_nnptr_SP => {
-                let nn = u8s_as_u16(self.read_nn());
-                // Little endian, so save the other part first
-                self.write_mem(nn, (self.reg_sp & 0xFF) as u8);
-                // Then the first 8 bits
-                self.write_mem(nn + 1, (self.reg_sp >> 7) as u8);
-                self.add_cycles(20);
-            }
-            Instruction::ADC_A_n => {
-                let reg = opcode - 0x88;
-                let value = if opcode == 0xCE {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
-                } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
-                };
-
-                let old_value = self.reg_a;
-                self.reg_a = old_value.wrapping_add(value);
-                if self.flag_c {
-                    // Add the carry flag
-                    self.reg_a = self.reg_a.wrapping_add(1 << 7);
+            Instruction::INC_n(r) => {
+                if self.print_instructions {
+                    println!("INC {}", reg_char(r));
                 }
 
-                self.flag_z = self.reg_a == 0;
+                let n = self.read_reg_r(r);
+                let result = n.wrapping_add(1);
+
+                self.flag_z = result == 0;
                 self.flag_n = false;
-                // H - Set if carry from bit 3.
-                self.flag_h = (self.reg_a & 0xF) <= (old_value & 0xF);
-                // C - set if carry from bit 15
-                self.flag_c = self.reg_a < old_value;
+                self.flag_h = result & 0x0F == 0;
+                self.write_reg_r(r, result);
             }
-            Instruction::LDHL_SP_n => {
-                // Sign extend the byte into u16
-                let n = ((self.read_byte() as i8) as i16) as u16;
-                self.set_hl(self.reg_sp + n);
+            Instruction::DEC_n(r) => {
+                if self.print_instructions {
+                    println!("DEC {}", reg_char(r));
+                }
 
-                self.flag_z = false;
-                self.flag_n = false;
-                // FIXME: h and c set or reset according to operation
-                self.flag_h = false;
-                self.flag_c = false;
+                let n = self.read_reg_r(r);
+                let result = n.wrapping_sub(1);
 
-                self.add_cycles(12);
+                self.flag_z = result == 0;
+                self.flag_n = true;
+                self.flag_h = result & 0x0F == 0x0F;
+                self.write_reg_r(r, result);
             }
-            Instruction::LD_SP_HL => {
-                self.reg_sp = self.hl();
-                self.add_cycles(8);
-            }
-            Instruction::LDI_A_HLptr => {
-                let hl = self.hl();
-                self.reg_a = self.read_mem(hl);
-                self.set_hl(hl + 1);
-                self.add_cycles(8);
-            }
-            Instruction::LDD_A_HLptr => {
-                let hl = self.hl();
-                self.reg_a = self.read_mem(hl);
-                self.set_hl(hl - 1);
-                self.add_cycles(8);
-            }
-            Instruction::LD_A_Cptr => {
-                self.reg_a = self.read_mem(0xFF00 + self.reg_c as u16);
-                self.add_cycles(8);
-            }
-            Instruction::LD_Cptr_A => {
-                self.write_mem(0xFF00 + self.reg_c as u16, self.reg_a);
-                self.add_cycles(8);
-            }
-            Instruction::ADD_HL_n => {
-                let n = match opcode {
-                    0x09 => self.bc(),
-                    0x19 => self.de(),
-                    0x29 => self.hl(),
-                    0x39 => self.reg_sp,
+
+            Instruction::ADD_HL_nn(nn) => {
+                let nn = match nn {
+                    0 => {
+                        if self.print_instructions {
+                            println!("ADD HL, BC");
+                        }
+                        self.bc()
+                    }
+                    1 => {
+                        if self.print_instructions {
+                            println!("ADD HL, DE");
+                        }
+                        self.de()
+                    }
+                    2 => {
+                        if self.print_instructions {
+                            println!("ADD HL, HL");
+                        }
+                        self.hl()
+                    }
+                    3 => {
+                        if self.print_instructions {
+                            println!("ADD HL, SP");
+                        }
+                        self.reg_sp
+                    }
                     _ => unreachable!(),
                 };
-                let hl = self.hl();
-                self.set_hl(hl.wrapping_add(n));
+                let nn = nn as u32;
+                let result = self.hl() as u32 + nn;
 
                 self.flag_n = false;
-                // H - Set if carry from bit 11.
-                self.flag_h = (self.hl() & 0xFFF) < (hl & 0xFFF);
-                // C - set if carry from bit 15
-                self.flag_c = self.hl() < hl;
+                self.flag_h = (self.hl() as u32 & 0xFFF) + (nn & 0xFFF) > 0xFFF;
+                self.flag_c = result > 0xFFFF;
 
-                self.add_cycles(8);
+                self.set_hl(result as u16);
+
+                self.add_cycles(4);
             }
             Instruction::ADD_SP_n => {
-                let old_value = self.reg_sp;
-                self.reg_sp = self
-                    .reg_sp
-                    // Sign extend the next byte
-                    .wrapping_add(self.read_byte() as i8 as i16 as u16);
+                // sign extend
+                let n = ((self.read_byte() as i8) as i16) as u16;
+                if self.print_instructions {
+                    println!("ADD SP, ${:x}", n);
+                }
+                let result = self.reg_sp + n;
 
                 self.flag_z = false;
                 self.flag_n = false;
+                self.flag_h = (self.reg_sp ^ n ^ (result & 0xFFFF)) & 0x10 == 0x10;
+                self.flag_c = (self.reg_sp ^ n ^ (result & 0xFFFF)) & 0x100 == 0x100;
 
-                // H - Set if carry from bit 11.
-                self.flag_h = (self.reg_sp & 0xFFF) < (old_value & 0xFFF);
-                // C - set if carry from bit 15
-                self.flag_c = self.reg_sp < old_value;
-
-                self.add_cycles(16);
+                self.reg_sp = result;
+                self.add_cycles(8);
             }
-            Instruction::INC_n => {
-                let reg = (opcode - 0x04) / 8;
-                let value = if reg == 6 {
-                    self.read_mem(self.hl())
-                } else {
-                    self.read_reg_r(reg)
-                };
-                let new_value = value.wrapping_add(1);
-                self.flag_z = new_value == 0;
-                self.flag_n = false;
-                // Set flag h is carry from bit 3
-                self.flag_h = (new_value & 0xF) < (value & 0xF);
-
-                if reg == 6 {
-                    self.write_mem(self.hl(), new_value);
-                    self.add_cycles(12);
-                } else {
-                    self.set_reg_r(reg, new_value);
-                    self.add_cycles(4);
-                }
-            }
-            Instruction::LD_n_A => {
-                // Load A into a register
-                match opcode {
-                    0x47 | 0x4F | 0x57 | 0x5F | 0x67 | 0x6F | 0x7F => {
-                        self.set_reg_r((opcode - 0x47) / 8, self.reg_a);
-                        self.add_cycles(4);
+            Instruction::INC_nn(nn) => {
+                match nn {
+                    0 => {
+                        if self.print_instructions {
+                            println!("INC BC");
+                        }
+                        let value = self.bc();
+                        self.set_bc(value + 1);
                     }
-                    0x02 => {
-                        self.write_mem(self.bc(), self.reg_a);
-                        self.add_cycles(8);
+                    1 => {
+                        if self.print_instructions {
+                            println!("INC DE");
+                        }
+                        let value = self.de();
+                        self.set_de(value + 1);
                     }
-                    0x12 => {
-                        self.write_mem(self.de(), self.reg_a);
-                        self.add_cycles(8);
+                    2 => {
+                        if self.print_instructions {
+                            println!("INC HL");
+                        }
+                        let value = self.hl();
+                        self.set_hl(value + 1);
                     }
-                    0x77 => {
-                        self.write_mem(self.hl(), self.reg_a);
-                        self.add_cycles(8);
-                    }
-                    0xEA => {
-                        let address = u8s_as_u16(self.read_nn());
-                        self.write_mem(address, self.reg_a);
-                        self.add_cycles(16);
+                    3 => {
+                        if self.print_instructions {
+                            println!("INC SP");
+                        }
+                        self.reg_sp += 1;
                     }
                     _ => unreachable!(),
+                };
+                self.add_cycles(4);
+            }
+            Instruction::DEC_nn(nn) => {
+                match nn {
+                    0 => {
+                        if self.print_instructions {
+                            println!("DEC BC");
+                        }
+                        let value = self.bc();
+                        self.set_bc(value - 1);
+                    }
+                    1 => {
+                        if self.print_instructions {
+                            println!("DEC DE");
+                        }
+                        let value = self.de();
+                        self.set_de(value - 1);
+                    }
+                    2 => {
+                        if self.print_instructions {
+                            println!("DEC HL");
+                        }
+                        let value = self.hl();
+                        self.set_hl(value - 1);
+                    }
+                    3 => {
+                        if self.print_instructions {
+                            println!("DEC SP");
+                        }
+                        self.reg_sp -= 1;
+                    }
+                    _ => unreachable!(),
+                };
+                self.add_cycles(4);
+            }
+
+            Instruction::CPL => {
+                if self.print_instructions {
+                    println!("CPL");
                 }
+                self.reg_a = !self.reg_a;
+                self.flag_h = true;
+                self.flag_n = true;
             }
-            Instruction::RLCA => {
-                let bit7 = self.reg_a >> 7;
-                self.reg_a <<= 1;
-
-                self.flag_c = bit7 == 1;
-                self.flag_z = self.reg_a == 0;
+            Instruction::CCF => {
+                if self.print_instructions {
+                    println!("CCF");
+                }
+                self.flag_c = !self.flag_c;
                 self.flag_n = false;
                 self.flag_h = false;
-
-                self.add_cycles(4);
             }
-            Instruction::RLA => {
-                let bit7 = self.reg_a >> 7;
-                self.reg_a <<= 1;
-                self.reg_a |= self.flag_c as u8;
-
-                self.flag_c = bit7 == 1;
-                self.flag_z = self.reg_a == 0;
+            Instruction::SCF => {
+                if self.print_instructions {
+                    println!("SCF");
+                }
+                self.flag_c = true;
                 self.flag_n = false;
                 self.flag_h = false;
-
-                self.add_cycles(4);
             }
-            Instruction::RRCA => {
-                let bit0 = self.reg_a & 0b1;
-                self.reg_a >>= 1;
-                self.reg_a |= bit0 << 7;
-
-                self.flag_c = bit0 == 1;
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = false;
-                self.flag_h = false;
-
-                self.add_cycles(4);
-            }
-            Instruction::RRA => {
-                let bit0 = self.reg_a & 0b1;
-                self.reg_a >>= 1;
-
-                self.reg_a |= (self.flag_c as u8) << 7;
-
-                self.flag_c = bit0 == 1;
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = false;
-                self.flag_h = false;
-
-                self.add_cycles(4);
+            Instruction::NOP => {
+                if self.print_instructions {
+                    println!("NOP");
+                }
             }
             Instruction::HALT => {
+                if self.print_instructions {
+                    println!("HALT");
+                }
                 self.cpu_state = CpuState::OffUntilInterrupt;
-                self.add_cycles(4);
             }
             Instruction::STOP => {
-                // The followup byte should be 00
-                let byte = self.read_byte();
-                if byte != 0x00 {
-                    return;
+                if self.print_instructions {
+                    println!("STOP");
                 }
                 self.cpu_state = CpuState::OffUntilButtonPress;
-                self.interconnect.ppu.turn_lcd_off();
+                // TODO: Stop LCD display too
+            }
+            Instruction::DI => {
+                if self.print_instructions {
+                    println!("DI");
+                }
+                self.flag_disabling_interrupts = true;
+            }
+            Instruction::EI => {
+                if self.print_instructions {
+                    println!("EI");
+                }
+                self.flag_enabling_interrupts = true;
+            }
 
+            Instruction::RLCA => {
+                if self.print_instructions {
+                    println!("RLCA");
+                }
+                let bit7 = self.reg_a >> 7;
+                self.reg_a <<= 1;
+                self.reg_a += bit7;
+
+                self.flag_z = false;
+                self.flag_n = false;
+                self.flag_h = false;
+                self.flag_c = bit7 == 1;
+            }
+            Instruction::RLA => {
+                if self.print_instructions {
+                    println!("RLA");
+                }
+                let bit7 = self.reg_a >> 7;
+                self.reg_a <<= 1;
+                self.reg_a += self.flag_c as u8;
+
+                self.flag_z = false;
+                self.flag_n = false;
+                self.flag_h = false;
+                self.flag_c = bit7 == 1;
+            }
+            Instruction::RRCA => {
+                if self.print_instructions {
+                    println!("RRCA");
+                }
+                let bit0 = self.reg_a & 1;
+                self.reg_a >>= 1;
+                self.reg_a += bit0 << 7;
+
+                self.flag_z = false;
+                self.flag_n = false;
+                self.flag_h = false;
+                self.flag_c = bit0 == 1;
+            }
+            Instruction::RRA => {
+                if self.print_instructions {
+                    println!("RRA");
+                }
+                let bit0 = self.reg_a & 1;
+                self.reg_a >>= 1;
+                self.reg_a += (self.flag_c as u8) << 7;
+
+                self.flag_z = false;
+                self.flag_n = false;
+                self.flag_h = false;
+                self.flag_c = bit0 == 1;
+            }
+
+            Instruction::JP_nn => {
+                let address = u8s_as_u16(self.read_nn());
+                if self.print_instructions {
+                    println!("JP ${:04x}", address);
+                }
+                self.reg_pc = address;
+            }
+            Instruction::JP_cc_nn(cc) => {
+                let address = u8s_as_u16(self.read_nn());
+                if self.print_instructions {
+                    println!("JP {} ${:04x}", cc_to_char(cc), address);
+                }
+                if self.check_cc(cc) {
+                    self.reg_pc = address;
+                }
+            }
+            Instruction::JP_HLptr => {
+                if self.print_instructions {
+                    println!("JP (HL)");
+                }
+                self.reg_pc = self.hl();
+            }
+            Instruction::JR_n => {
+                // Sign extend
+                let n = ((self.read_byte() as i8) as i16) as u16;
+                if self.print_instructions {
+                    println!("JR {}", n as i16);
+                }
+                self.reg_pc = self.reg_pc.wrapping_add(n);
                 self.add_cycles(4);
             }
-            Instruction::DEC_n => {
-                let reg = (opcode - 0x05) / 8;
-                let value = if reg == 6 {
-                    self.read_mem(self.hl())
-                } else {
-                    self.read_reg_r(reg)
-                };
-                let new_value = value.wrapping_sub(1);
-
-                self.flag_z = new_value == 0;
-                self.flag_n = true;
-                // H - Set if no borrow from bit 4.
-                self.flag_h = (new_value & 0xF) < (value & 0xF);
-
-                if reg == 6 {
-                    self.write_mem(self.hl(), new_value);
-                    self.add_cycles(12);
-                } else {
-                    self.set_reg_r(reg, new_value);
-                    self.add_cycles(4);
+            Instruction::JR_cc_n(cc) => {
+                // Sign extend
+                let n = ((self.read_byte() as i8) as i16) as u16;
+                if self.print_instructions {
+                    println!("JR {} {}", cc_to_char(cc), n as i16);
                 }
+                if self.check_cc(cc) {
+                    self.reg_pc = self.reg_pc.wrapping_add(n);
+                }
+                self.add_cycles(4);
+            }
+
+            Instruction::CALL_nn => {
+                let nn = u8s_as_u16(self.read_nn());
+                if self.print_instructions {
+                    println!("CALL ${:04x}", nn);
+                }
+                self.push_stack_u16(self.reg_pc);
+                self.reg_pc = nn;
+                self.add_cycles(8);
+            }
+
+            Instruction::CALL_cc_nn(cc) => {
+                let nn = u8s_as_u16(self.read_nn());
+                if self.print_instructions {
+                    println!("CALL {} ${:04x}", cc_to_char(cc), nn);
+                }
+                if self.check_cc(cc) {
+                    self.push_stack_u16(self.reg_pc);
+                    self.reg_pc = nn;
+                }
+                self.add_cycles(8);
+            }
+
+            Instruction::RST_n(n) => {
+                if self.print_instructions {
+                    println!("RST ${:02x}H", n);
+                }
+                self.push_stack_u16(self.reg_pc);
+                self.reg_pc = n as u16;
+                self.add_cycles(28);
+            }
+            Instruction::RET => {
+                if self.print_instructions {
+                    println!("RET");
+                }
+                let address = self.pop_stack_u16();
+                self.reg_pc = address;
+                self.add_cycles(4);
+            }
+            Instruction::RET_cc(cc) => {
+                if self.print_instructions {
+                    println!("RET {}", cc_to_char(cc));
+                }
+                if self.check_cc(cc) {
+                    let address = self.pop_stack_u16();
+                    self.reg_pc = address;
+                }
+                self.add_cycles(4);
+            }
+            Instruction::RETI => {
+                if self.print_instructions {
+                    println!("RETI");
+                }
+                let address = self.pop_stack_u16();
+                self.reg_pc = address;
+                self.flag_ime = true;
+                self.add_cycles(8);
             }
             Instruction::DAA => {
                 // https://ehaskins.com/2018-01-30%20Z80%20DAA/
                 let value = self.reg_a;
                 let mut correction = 0;
                 if self.flag_h || (!self.flag_n && (value & 0xF) > 9) {
-                    correction |= 0x6;
+                    correction |= 0x06;
                     self.flag_c = false;
                 }
-                if self.flag_c || (!self.flag_n && value > 0x99) {
+                if self.flag_c || (!self.flag_n && value > 0x9F) {
                     correction |= 0x60;
                     self.flag_c = true;
                 }
@@ -663,186 +955,11 @@ impl Cpu {
 
                 self.flag_z = self.reg_a == 0;
                 self.flag_h = false;
-
-                self.add_cycles(4);
-            }
-            Instruction::CPL => {
-                // Complement, so flip all bits
-                self.reg_a = !self.reg_a;
-                self.flag_n = true;
-                self.flag_h = true;
-
-                self.add_cycles(4);
-            }
-            Instruction::CCF => {
-                self.flag_c = !self.flag_c;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.add_cycles(4);
-            }
-            Instruction::SCF => {
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = true;
-
-                self.add_cycles(4);
-            }
-            Instruction::LDI_HLptr_A => {
-                let address = self.hl();
-                self.write_mem(address, self.reg_a);
-                self.set_hl(address + 1);
-
-                self.add_cycles(8);
-            }
-            Instruction::INC_nn => {
-                match opcode {
-                    0x03 => self.set_bc(self.bc() + 1),
-                    0x13 => self.set_de(self.de() + 1),
-                    0x23 => self.set_hl(self.hl() + 1),
-                    0x33 => self.reg_sp += 1,
-                    _ => unreachable!(),
-                };
-                self.add_cycles(8);
-            }
-            Instruction::DEC_nn => {
-                match opcode {
-                    0x0B => self.set_bc(self.bc() - 1),
-                    0x1B => self.set_de(self.de() - 1),
-                    0x2B => self.set_hl(self.hl() - 1),
-                    0x3B => self.reg_sp -= 1,
-                    _ => unreachable!(),
-                };
-                self.add_cycles(8);
-            }
-            Instruction::POP_nn => {
-                let value = self.pop_stack_u16();
-                match opcode {
-                    0xF1 => self.set_af(value),
-                    0xC1 => self.set_bc(value),
-                    0xD1 => self.set_de(value),
-                    0xE1 => self.set_hl(value),
-                    _ => unreachable!(),
-                }
-                self.add_cycles(12);
-            }
-            Instruction::RET => {
-                self.reg_pc = self.pop_stack_u16();
-                self.add_cycles(8);
-            }
-            Instruction::RET_cc => {
-                if opcode == 0xC0 && self.flag_z == false
-                    || opcode == 0xC8 && self.flag_z
-                    || opcode == 0xD0 && self.flag_c == false
-                    || opcode == 0xD8 && self.flag_c
-                {
-                    self.reg_pc = self.pop_stack_u16();
-                }
-                self.add_cycles(8);
-            }
-            Instruction::DI => {
-                self.flag_disabling_interrupts = true;
-                self.add_cycles(4);
-            }
-            Instruction::EI => {
-                self.flag_enabling_interrupts = true;
-                self.add_cycles(4);
-            }
-            Instruction::CALL_cc_nn => {
-                let address = u8s_as_u16(self.read_nn());
-                if opcode == 0xC4 && self.flag_z == false
-                    || opcode == 0xCC && self.flag_z
-                    || opcode == 0xD4 && self.flag_c == false
-                    || opcode == 0xDC && self.flag_c
-                {
-                    self.push_stack_u16(self.reg_pc);
-                    self.reg_pc = address;
-                }
-                self.add_cycles(12);
-            }
-            Instruction::LDH_nptr_A => {
-                let address = self.read_byte() as u16 | 0xFF00;
-                self.write_mem(address, self.reg_a);
-
-                self.add_cycles(12);
-            }
-            Instruction::XOR_n => {
-                let reg = opcode - 0xA8;
-                let value = if opcode == 0xEE {
-                    self.add_cycles(8);
-                    self.read_byte()
-                } else if reg == 6 {
-                    self.add_cycles(8);
-                    self.read_mem(self.hl())
-                } else {
-                    self.add_cycles(4);
-                    self.read_reg_r(reg)
-                };
-
-                // XOR  with A
-                self.reg_a ^= value;
-                // Set flags
-                self.flag_z = self.reg_a == 0;
-                self.flag_c = false;
-                self.flag_h = false;
-                self.flag_n = false;
-            }
-            Instruction::LDD_HLptr_A => {
-                // Set A into address of HL. Then decrement hl
-                self.write_mem(self.hl(), self.reg_a);
-                self.set_hl(self.hl() - 1);
-
-                self.add_cycles(8);
-            }
-            Instruction::LDH_A_nptr => {
-                let address = 0xFF00 + self.read_byte() as u16;
-                self.reg_a = self.read_mem(address);
-                self.add_cycles(12);
-            }
-            Instruction::JR_cc_n => {
-                // Add next value to current pc on condition
-                let value = self.read_byte();
-                let current_address = self.reg_pc as i16;
-                self.add_cycles(8);
-                // Jump conditions depending on opcode
-                if opcode == 0x20 && !self.flag_z
-                    || opcode == 0x28 && self.flag_z
-                    || opcode == 0x30 && !self.flag_c
-                    || opcode == 0x38 && self.flag_c
-                {
-                    self.reg_pc = (current_address + (value as i8 as i16)) as u16;
-                }
-            }
-            Instruction::RST_n => {
-                let address = opcode - 0xC7;
-                self.push_stack_u16(self.reg_pc);
-                self.reg_pc = address as u16;
-                self.add_cycles(32);
-            }
-            Instruction::RETI => {
-                let address = self.pop_stack_u16();
-                self.reg_pc = address;
-                self.flag_ime = true;
-                self.add_cycles(8);
-            }
-            Instruction::JP_cc_nn => {
-                let next_addr = u8s_as_u16(self.read_nn());
-                self.add_cycles(12);
-                // Jump conditions depending on opcode
-                if opcode == 0xC2 && !self.flag_z
-                    || opcode == 0xCA && self.flag_z
-                    || opcode == 0xD2 && !self.flag_c
-                    || opcode == 0xDA && self.flag_c
-                {
-                    self.reg_pc = next_addr;
-                }
-            }
-            Instruction::JR_n => {
-                let value = self.read_byte();
-                let current_address = self.reg_pc as i16;
-                self.reg_pc = (current_address + (value as i8 as i16)) as u16;
-                self.add_cycles(8);
             }
             Instruction::CB => self.handle_cb_opcode(),
+        }
+        if self.print_instructions {
+            println!();
         }
     }
 
@@ -867,77 +984,43 @@ impl Cpu {
         {
             // CB means a bit operation. Find out which one
             let opcode = self.read_byte();
-            let inst = match instruction::parse_cb(opcode) {
-                Some(o) => o,
-                None => {
-                    println!(
-                        "{:04x}  Undefined  CB opcode: {:02x}!",
-                        self.reg_pc - 2,
-                        opcode
-                    );
-                    return;
-                }
-            };
+            let inst = instruction::parse_cb(opcode);
 
-            if false {
-                println!(
-                    "0x{:04x} op: 0xCB 0x{:02x} inst: '{:?}'",
-                    self.reg_pc - 2,
-                    opcode,
-                    inst
-                );
-            }
+            self.add_cycles(4);
 
             match inst {
                 CB_Instruction::BIT_b_r(b, r) => {
+                    if self.print_instructions {
+                        println!("BIT {}, {}", b, reg_char(r));
+                    }
                     // Get r value and check bit b on it
-                    let value = if r == 6 {
-                        self.add_cycles(12);
-                        self.read_mem(self.hl())
-                    } else {
-                        self.add_cycles(8);
-                        self.read_reg_r(r)
-                    };
+                    let value = self.read_reg_r(r);
                     self.flag_z = value & (1 << b) == 0;
                     self.flag_h = true;
                     self.flag_n = false;
                 }
                 CB_Instruction::SET_b_r(b, r) => {
-                    let mut value = if r == 6 {
-                        self.add_cycles(12);
-                        self.read_mem(self.hl())
-                    } else {
-                        self.add_cycles(8);
-                        self.read_reg_r(r)
-                    };
-                    value |= 1 << b;
-                    if r == 6 {
-                        self.write_mem(self.hl(), value);
-                    } else {
-                        self.set_reg_r(r, value);
+                    if self.print_instructions {
+                        println!("SET {}, {}", b, reg_char(r));
                     }
+                    let mut value = self.read_reg_r(r);
+                    value |= 1 << b;
+                    self.write_reg_r(r, value);
                 }
                 CB_Instruction::RES_b_r(b, r) => {
-                    let mut value = if r == 6 {
-                        self.add_cycles(12);
-                        self.read_mem(self.hl())
-                    } else {
-                        self.add_cycles(8);
-                        self.read_reg_r(r)
-                    };
-                    value &= !(1 << b);
-                    if r == 6 {
-                        self.write_mem(self.hl(), value);
-                    } else {
-                        self.set_reg_r(r, value);
+                    if self.print_instructions {
+                        println!("RES {}, {}", b, reg_char(r));
                     }
+                    let mut value = self.read_reg_r(r);
+                    value &= !(1 << b);
+                    self.write_reg_r(r, value);
                 }
+
                 CB_Instruction::RL_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("RL {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
                     value <<= 1;
                     value += self.flag_c as u8;
@@ -947,20 +1030,13 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
                 CB_Instruction::RLC_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("RLC {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
                     value <<= 1;
                     value |= bit7;
@@ -970,21 +1046,14 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
 
                 CB_Instruction::SLA_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("SLA {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
                     value <<= 1;
 
@@ -993,20 +1062,10 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
                 CB_Instruction::RRC_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
                     value >>= 1;
                     value |= (bit0) << 7;
@@ -1016,20 +1075,13 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
                 CB_Instruction::SRA_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("SRA {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
                     let bit7 = value >> 7;
                     value >>= 1;
@@ -1041,20 +1093,13 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
                 CB_Instruction::SRL_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("SRL {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
                     value >>= 1;
 
@@ -1063,20 +1108,13 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
                 CB_Instruction::RR_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("RR {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
                     value >>= 1;
                     value |= (self.flag_c as u8) << 7;
@@ -1086,20 +1124,13 @@ impl Cpu {
                     self.flag_n = false;
                     self.flag_h = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
                 CB_Instruction::SWAP_n(n) => {
-                    let mut value = if n == 6 {
-                        self.read_mem(self.hl())
-                    } else {
-                        self.read_reg_r(n)
-                    };
+                    if self.print_instructions {
+                        println!("SWAP {}", reg_char(n));
+                    }
+                    let mut value = self.read_reg_r(n);
                     value = value.swap_bytes();
 
                     self.flag_z = value == 0;
@@ -1107,13 +1138,7 @@ impl Cpu {
                     self.flag_h = false;
                     self.flag_c = false;
 
-                    if n == 6 {
-                        self.write_mem(self.hl(), value);
-                        self.add_cycles(16);
-                    } else {
-                        self.set_reg_r(n, value);
-                        self.add_cycles(8);
-                    }
+                    self.write_reg_r(n, value);
                 }
             }
         }
@@ -1146,7 +1171,7 @@ impl Cpu {
         self.cycles += amount;
     }
 
-    fn read_reg_r(&self, r: u8) -> u8 {
+    fn read_reg_r(&mut self, r: u8) -> u8 {
         match r {
             0 => self.reg_b,
             1 => self.reg_c,
@@ -1154,22 +1179,46 @@ impl Cpu {
             3 => self.reg_e,
             4 => self.reg_h,
             5 => self.reg_l,
-            6 => panic!("Cpu::read_reg_r  (HL) not handled with this function"),
+            6 => self.read_mem(self.hl()),
             7 => self.reg_a,
 
             _ => panic!("Cpu::read_reg_r  Invalid r: {}", r),
         }
     }
 
+    fn print_registers(&self) {
+        print!("a: 0x{:02x}, ", self.reg_a);
+        print!("b: 0x{:02x}, ", self.reg_b);
+        print!("c: 0x{:02x}, ", self.reg_c);
+        print!("d: 0x{:02x}, ", self.reg_d);
+        println!("e: 0x{:02x}", self.reg_e);
+        print!("Flag Z: {}, ", self.flag_z);
+        print!("Flag N: {}, ", self.flag_n);
+        print!("Flag H: {}, ", self.flag_h);
+        println!("Flag C: {}, ", self.flag_c);
+        println!("HL: {:04x}, ", self.hl());
+    }
+
+    fn check_cc(&self, cc: u8) -> bool {
+        match cc {
+            0 => !self.flag_z,
+            1 => self.flag_z,
+            2 => !self.flag_c,
+            3 => self.flag_c,
+            _ => unreachable!(),
+        }
+    }
     fn read_mem(&mut self, address: u16) -> u8 {
+        self.add_cycles(4);
         self.interconnect.read_mem(address)
     }
 
     fn write_mem(&mut self, address: u16, value: u8) {
+        self.add_cycles(4);
         self.interconnect.write_mem(address, value);
     }
 
-    fn set_reg_r(&mut self, r: u8, value: u8) {
+    fn write_reg_r(&mut self, r: u8, value: u8) {
         match r {
             0 => self.reg_b = value,
             1 => self.reg_c = value,
@@ -1177,7 +1226,7 @@ impl Cpu {
             3 => self.reg_e = value,
             4 => self.reg_h = value,
             5 => self.reg_l = value,
-            6 => panic!("Cpu::read_reg_r  (HL) not handled with this function"),
+            6 => self.write_mem(self.hl(), value),
             7 => self.reg_a = value,
 
             _ => panic!("Cpu::read_reg_r  Invalid r: {}", r),
@@ -1185,6 +1234,7 @@ impl Cpu {
     }
 
     fn read_byte(&mut self) -> u8 {
+        self.add_cycles(4);
         let ret = self.read_mem(self.reg_pc);
         self.reg_pc += 1;
         ret
@@ -1197,18 +1247,22 @@ impl Cpu {
         (second, first)
     }
 
+    #[inline(always)]
     fn af(&self) -> u16 {
         u8s_as_u16((self.reg_a, self.reg_f))
     }
 
+    #[inline(always)]
     fn bc(&self) -> u16 {
         u8s_as_u16((self.reg_b, self.reg_c))
     }
 
+    #[inline(always)]
     fn de(&self) -> u16 {
         u8s_as_u16((self.reg_d, self.reg_e))
     }
 
+    #[inline(always)]
     fn hl(&self) -> u16 {
         u8s_as_u16((self.reg_h, self.reg_l))
     }
@@ -1238,6 +1292,30 @@ impl Cpu {
     }
 }
 
+fn reg_char(r: u8) -> &'static str {
+    match r {
+        0 => "B",
+        1 => "C",
+        2 => "D",
+        3 => "E",
+        4 => "H",
+        5 => "L",
+        6 => "(HL)",
+        7 => "A",
+
+        _ => panic!("Cpu::read_reg_r  Invalid r: {}", r),
+    }
+}
+
+fn cc_to_char(cc: u8) -> &'static str {
+    match cc {
+        0 => "NZ",
+        1 => "Z",
+        2 => "NC",
+        3 => "C",
+        _ => unreachable!(),
+    }
+}
 #[inline(always)]
 fn u16_as_u8s(val: u16) -> (u8, u8) {
     ((val >> 8) as u8, (val & 0xFF) as u8)
