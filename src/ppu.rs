@@ -146,11 +146,12 @@ impl Ppu {
         }
     }
 
-    pub fn update(&mut self) {
+    // bool signifies whether a vblank interrupt or not
+    pub fn update(&mut self) -> bool {
         // If on cooldown, jump out
         if self.cycles > 0 {
             self.cycles -= 1;
-            return;
+            return false;
         }
         match self.state {
             State::OAMSearch => {
@@ -190,8 +191,12 @@ impl Ppu {
                     self.LCDC_status |= 0b10;
                     self.state = State::OAMSearch;
                 }
+                if self.ly == 145 {
+                    return true;
+                }
             }
         }
+        return false;
     }
 
     pub fn turn_lcd_off(&mut self) {

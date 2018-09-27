@@ -61,7 +61,7 @@ impl Cpu {
             reg_h: 0,
             reg_l: 0,
             reg_sp: 0,
-            reg_pc: 0, // Put boot operation to go from here. As it's unused
+            reg_pc: 0,
 
             flag_z: false, // Zero flag
             flag_n: false, // Subtract flag
@@ -87,8 +87,8 @@ impl Cpu {
             return;
         }
 
-        if (self.cpu_state == CpuState::On || self.cpu_state == CpuState::OffUntilInterrupt)
-            && self.flag_ime
+        if self.flag_ime
+            && (self.cpu_state == CpuState::On || self.cpu_state == CpuState::OffUntilInterrupt)
         {
             self.handle_interrupts();
         }
@@ -116,6 +116,8 @@ impl Cpu {
         };
         // If was in OffUntilInterrupt state
         self.cpu_state = CpuState::On;
+        // Disable interrupts
+        self.flag_ime = false;
 
         // Jump to interrupt address
         self.push_stack_u16(self.reg_pc);
@@ -126,17 +128,17 @@ impl Cpu {
             Interrupt::SerialTransfer => 0x0058,
             Interrupt::Joypad => 0x0060,
         };
-        // Disable interrupts
-        self.flag_ime = false;
     }
 
     fn do_next_instrution(&mut self) {
         let opcode = self.read_byte();
-        let inst = instruction::parse(opcode).expect(&format!(
-            "0x{:04x} Unknown opcode: 0x{:02x}",
-            self.reg_pc - 1,
-            opcode
-        ));
+        let inst = match instruction::parse(opcode) {
+            Some(o) => o,
+            None => {
+                println!("{:04x}  Undefined opcode: {:02x}!", self.reg_pc - 1, opcode);
+                return;
+            }
+        };
         if false {
             if opcode != 0xCB {
                 println!(
@@ -184,7 +186,6 @@ impl Cpu {
                     self.add_cycles(4);
                     self.read_reg_r(reg2)
                 };
-                println!("LD_r1_r2 op: {:02x}", opcode);
                 self.set_reg_r(reg1, value);
             }
             Instruction::LD_HL_ptr_r2 => {
@@ -356,7 +357,8 @@ impl Cpu {
                 self.flag_c = self.reg_a < n;
             }
             Instruction::JP_nn => {
-                self.reg_pc = u8s_as_u16(self.read_nn());
+                let addr = u8s_as_u16(self.read_nn());
+                self.reg_pc = addr;
                 self.add_cycles(12);
             }
             Instruction::JP_HLptr => {
@@ -407,8 +409,8 @@ impl Cpu {
                 self.add_cycles(20);
             }
             Instruction::ADC_A_n => {
-                let reg = opcode - 0x80;
-                let value = if opcode == 0xC6 {
+                let reg = opcode - 0x88;
+                let value = if opcode == 0xCE {
                     self.add_cycles(8);
                     self.read_byte()
                 } else if reg == 6 {
@@ -865,11 +867,17 @@ impl Cpu {
         {
             // CB means a bit operation. Find out which one
             let opcode = self.read_byte();
-            let inst = instruction::parse_cb(opcode).expect(&format!(
-                "0x{:04x} Unknown CB opcode: 0x{:02x}",
-                self.reg_pc - 2,
-                opcode
-            ));
+            let inst = match instruction::parse_cb(opcode) {
+                Some(o) => o,
+                None => {
+                    println!(
+                        "{:04x}  Undefined  CB opcode: {:02x}!",
+                        self.reg_pc - 2,
+                        opcode
+                    );
+                    return;
+                }
+            };
 
             if false {
                 println!(
@@ -1113,7 +1121,7 @@ impl Cpu {
 
     fn push_stack(&mut self, value: u8) {
         self.write_mem(self.reg_sp, value);
-        self.reg_sp -= 1;
+        self.reg_sp = self.reg_sp.wrapping_sub(1);
     }
     fn push_stack_u16(&mut self, value: u16) {
         let (first, second) = u16_as_u8s(value);
@@ -1123,7 +1131,7 @@ impl Cpu {
     fn pop_stack(&mut self) -> u8 {
         // Add first, so we are reading the old value
         // As reg_sp always points to the next empty spot
-        self.reg_sp += 1;
+        self.reg_sp = self.reg_sp.wrapping_add(1);
         let ret = self.read_mem(self.reg_sp);
         ret
     }
@@ -1154,16 +1162,10 @@ impl Cpu {
     }
 
     fn read_mem(&mut self, address: u16) -> u8 {
-        if address == 0xFFFF {
-            println!("pc at {:04x}", self.reg_pc - 1);
-        }
         self.interconnect.read_mem(address)
     }
 
     fn write_mem(&mut self, address: u16, value: u8) {
-        if address == 0xFFFF {
-            println!("pc at {:04x}", self.reg_pc - 1);
-        }
         self.interconnect.write_mem(address, value);
     }
 
