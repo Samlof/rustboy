@@ -11,8 +11,11 @@ use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::mpsc::channel;
+use std::thread;
 
 mod cartridge;
+mod console;
 mod cpu;
 mod instruction;
 mod interconnect;
@@ -30,6 +33,16 @@ fn main() -> io::Result<()> {
     let rom = cartridge::Cartridge::new(read_file("resources/roms/Tetris-USA.gb")?);
     let ic = interconnect::Interconnect::new(boot, rom);
     let mut cpu = cpu::Cpu::new(ic);
+
+    let (tx, rx) = channel::<console::CpuText>();
+
+    cpu.set_console_tx(tx);
+    cpu.set_print_instruction(true);
+    let mut console = console::Console::new(rx);
+
+    thread::spawn(move || loop {
+        console.step()
+    });
 
     while cpu.interconnect.ppu.main_window.is_open()
         && !cpu.interconnect.ppu.main_window.is_key_down(Key::Escape)

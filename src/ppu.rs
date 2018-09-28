@@ -103,8 +103,6 @@ pub struct Ppu {
     wx: u8,          // FF4B
 
     pub main_window: Window,
-    tile_window: Option<Window>,
-    buffer_window: Option<Window>,
 
     sprite_memory: Box<[u8]>,
     vram: Box<[u8]>,
@@ -136,8 +134,6 @@ impl Ppu {
             vram: vec![0; VRAM_LENGTH as usize].into_boxed_slice(),
 
             main_window: create_window(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "Rustboy", Scale::X4),
-            tile_window: None,
-            buffer_window: None,
 
             buffer: vec![0; WIDTH * HEIGHT],
             viewport_buffer: vec![0; VIEWPORT_WIDTH * VIEWPORT_HEIGHT],
