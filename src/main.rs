@@ -39,7 +39,7 @@ fn main() -> io::Result<()> {
     let boot = read_file("resources/boot/DMG_ROM.bin")?;
     //let rom = cartridge::Cartridge::new(read_file("resources/roms/Tetris-USA.gb")?);
     let rom = cartridge::Cartridge::new(read_file(
-        "resources/roms/cpu_instrs/individual/01-special.gb",
+        "resources/roms/cpu_instrs/individual/02-interrupts.gb",
     )?);
     let ic = interconnect::Interconnect::new(boot, rom);
     let mut cpu = cpu::Cpu::new(ic);
@@ -47,7 +47,7 @@ fn main() -> io::Result<()> {
     let (tx, rx) = channel::<console::CpuText>();
 
     cpu.set_console_tx(tx);
-    cpu.set_print_instruction(false);
+    cpu.set_print_instruction(true);
     let fps_cap = false;
 
     let mut console = console::Console::new(rx);

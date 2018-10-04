@@ -55,7 +55,7 @@ impl Cpu {
             reg_h: 0,
             reg_l: 0,
             reg_sp: 0,
-            reg_pc: 0,
+            reg_pc: 0xFE,
 
             flag_ime: false,
             flag_disabling_interrupts: false,
@@ -70,6 +70,7 @@ impl Cpu {
     }
 
     pub fn step(&mut self) {
+        // c1b9 is test failed address
         // Hand over to interconnect first. So ppu updates
         self.interconnect.update();
 
@@ -101,6 +102,8 @@ impl Cpu {
     }
 
     fn send_instr_text(&self, str: String) {
+        println!("{}", str);
+        return;
         if let Some(ref tx) = self.console_tx {
             tx.send(CpuText::Instruction(str));
         }
@@ -112,6 +115,7 @@ impl Cpu {
             None => return,
         };
 
+        println!("In interrupt: {:?}", interrupt);
         if let Some(ref tx) = self.console_tx {
             tx.send(CpuText::Interrupt(format!("{:?}", interrupt)));
         }
@@ -1172,8 +1176,8 @@ impl Cpu {
     }
 
     fn push_stack(&mut self, value: u8) {
-        self.write_mem(self.reg_sp, value);
         self.reg_sp = self.reg_sp.wrapping_sub(1);
+        self.write_mem(self.reg_sp, value);
     }
     fn push_stack_u16(&mut self, value: u16) {
         let (first, second) = u16_as_u8s(value);
@@ -1183,8 +1187,8 @@ impl Cpu {
     fn pop_stack(&mut self) -> u8 {
         // Add first, so we are reading the old value
         // As reg_sp always points to the next empty spot
-        self.reg_sp = self.reg_sp.wrapping_add(1);
         let ret = self.read_mem(self.reg_sp);
+        self.reg_sp = self.reg_sp.wrapping_add(1);
         ret
     }
     fn pop_stack_u16(&mut self) -> u16 {

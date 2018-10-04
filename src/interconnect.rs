@@ -166,14 +166,14 @@ impl Interconnect {
         match address {
             0xFF0F => self.interrupt_flag = value,
             0xFF01 => {
-                println!("Can't send serial data!");
+                //println!("Can't send serial data!");
             }
             0xFF02 => {
                 if value >= 0b1000_0000 {
-                    println!(
-                        "Write to serial port: addr: 0x{:04x}, 0x{:02x}",
-                        address, value
-                    );
+                    //println!(
+                    //    "Write to serial port: addr: 0x{:04x}, 0x{:02x}",
+                    //    address, value
+                    //);
                 }
             }
             _ => println!(
