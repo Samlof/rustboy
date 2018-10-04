@@ -1167,7 +1167,9 @@ impl Cpu {
                         instruction_string.push_str(&format!("SWAP {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
-                    value = value.swap_bytes();
+                    let low = value & 0xF;
+                    let high = (value & 0xF0) >> 4;
+                    value = (low << 4) | high;
 
                     self.flag_z = value == 0;
                     self.flag_n = false;

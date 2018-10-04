@@ -113,14 +113,14 @@ impl Joypad {
 
 fn get_button_bit(btn: Button) -> u8 {
     match btn {
-        Button::Down => 0,
-        Button::Up => 1,
-        Button::Left => 2,
-        Button::Right => 3,
+        Button::Right => 0,
+        Button::Left => 1,
+        Button::Up => 2,
+        Button::Down => 3,
 
-        Button::Start => 4,
-        Button::Select => 5,
-        Button::B => 6,
-        Button::A => 7,
+        Button::A => 4,
+        Button::B => 5,
+        Button::Select => 6,
+        Button::Start => 7,
     }
 }
