@@ -40,9 +40,7 @@ fn main() -> io::Result<()> {
     cpu.set_print_instruction(true);
     let mut console = console::Console::new(rx);
 
-    thread::spawn(move || loop {
-        console.step()
-    });
+    thread::spawn(move || console.start());
 
     while cpu.interconnect.ppu.main_window.is_open()
         && !cpu.interconnect.ppu.main_window.is_key_down(Key::Escape)

@@ -1,4 +1,7 @@
+use std::io;
+use std::io::Write;
 use std::sync::mpsc;
+use std::thread::sleep;
 
 pub enum CpuText {
     Instruction(String),
@@ -15,11 +18,17 @@ impl Console {
         Console { instr_rx: rx }
     }
 
-    pub fn step(&mut self) {
-        let string = self.instr_rx.recv().unwrap();
-        match string {
-            CpuText::Instruction(str) => println!("{}", str),
-            _ => (),
-        };
+    pub fn start(&mut self) {
+        let mut stdout = io::stdout();
+        loop {
+            let instr = self.instr_rx.recv().unwrap();
+            let mut handle = stdout.lock();
+            let string = match instr {
+                CpuText::Instruction(string) => string,
+                _ => String::new(),
+            };
+            handle.write(string.as_bytes());
+            handle.write(b"\n");
+        }
     }
 }

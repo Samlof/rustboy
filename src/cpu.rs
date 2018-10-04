@@ -167,15 +167,14 @@ impl Cpu {
         // But need to declare it still here, to use it later in the same function
         let mut instruction_string = String::with_capacity(20);
         if self.print_instructions {
-            instruction_string = instruction_string + &format!("0x{:04x} ", self.reg_pc - 1);
+            instruction_string.push_str(&format!("0x{:04x} ", self.reg_pc - 1));
         }
         self.add_cycles(4);
 
         match instr {
             Instruction::LD_r1_r2(r1, r2) => {
                 if self.print_instructions {
-                    instruction_string =
-                        instruction_string + &format!("LD {}, {}", reg_char(r1), reg_char(r2));
+                    instruction_string.push_str(&format!("LD {}, {}", reg_char(r1), reg_char(r2)));
                 }
                 let value = self.read_reg_r(r2);
                 self.write_reg_r(r1, value);
@@ -183,8 +182,7 @@ impl Cpu {
             Instruction::LD_r1_n(r1) => {
                 let value = self.read_byte();
                 if self.print_instructions {
-                    instruction_string =
-                        instruction_string + &format!("LD {}, ${:02x}", reg_char(r1), value);
+                    instruction_string.push_str(&format!("LD {}, ${:02x}", reg_char(r1), value));
                 }
                 self.write_reg_r(r1, value);
             }
@@ -192,21 +190,20 @@ impl Cpu {
                 self.reg_a = match opcode {
                     0x0A => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("LD A, (BC)");
+                            instruction_string.push_str(&format!("LD A, (BC)"));
                         };
                         self.read_mem(self.bc())
                     }
                     0x1A => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("LD A, (DE)");
+                            instruction_string.push_str(&format!("LD A, (DE)"));
                         };
                         self.read_mem(self.de())
                     }
                     0xFA => {
                         let address = u8s_as_u16(self.read_nn());
                         if self.print_instructions {
-                            instruction_string =
-                                instruction_string + &format!("LD A, $({:04x})", address);
+                            instruction_string.push_str(&format!("LD A, $({:04x})", address));
                         };
                         self.read_mem(address)
                     }
@@ -217,21 +214,20 @@ impl Cpu {
                 match opcode {
                     0x02 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("LD (BC), A");
+                            instruction_string.push_str(&format!("LD (BC), A"));
                         };
                         self.write_mem(self.bc(), self.reg_a);
                     }
                     0x12 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("LD (DE), A");
+                            instruction_string.push_str(&format!("LD (DE), A"));
                         };
                         self.write_mem(self.de(), self.reg_a);
                     }
                     0xEA => {
                         let address = u8s_as_u16(self.read_nn());
                         if self.print_instructions {
-                            instruction_string =
-                                instruction_string + &format!("LD 0x({:04x}), A", address);
+                            instruction_string.push_str(&format!("LD 0x({:04x}), A", address));
                         };
                         self.write_mem(address, self.reg_a);
                     }
@@ -241,20 +237,20 @@ impl Cpu {
             Instruction::LD_A_Cptr => {
                 let address = 0xFF00 + self.reg_c as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD A, ($FF00+C)");
+                    instruction_string.push_str(&format!("LD A, ($FF00+C)"));
                 }
                 self.reg_a = self.read_mem(address);
             }
             Instruction::LD_Cptr_A => {
                 let address = 0xFF00 + self.reg_c as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD (C), A");
+                    instruction_string.push_str(&format!("LD (C), A"));
                 }
                 self.write_mem(address, self.reg_a);
             }
             Instruction::LDD_A_HLptr => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD A, (HL-)");
+                    instruction_string.push_str(&format!("LD A, (HL-)"));
                 }
                 let address = self.hl();
                 self.reg_a = self.read_mem(address);
@@ -262,7 +258,7 @@ impl Cpu {
             }
             Instruction::LDD_HLptr_A => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD (HL-), A");
+                    instruction_string.push_str(&format!("LD (HL-), A"));
                 }
                 let address = self.hl();
                 self.write_mem(address, self.reg_a);
@@ -270,7 +266,7 @@ impl Cpu {
             }
             Instruction::LDI_A_HLptr => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD A, (HL+)");
+                    instruction_string.push_str(&format!("LD A, (HL+)"));
                 }
                 let address = self.hl();
                 self.reg_a = self.read_mem(address);
@@ -278,7 +274,7 @@ impl Cpu {
             }
             Instruction::LDI_HLptr_A => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD (HL-), A");
+                    instruction_string.push_str(&format!("LD (HL-), A"));
                 }
                 let address = self.hl();
                 self.write_mem(address, self.reg_a);
@@ -288,14 +284,14 @@ impl Cpu {
             Instruction::LDH_nptr_A => {
                 let byte = 0xFF00 + self.read_byte() as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LDH $({:02x}), A", byte);
+                    instruction_string.push_str(&format!("LDH $({:02x}), A", byte));
                 }
                 self.write_mem(byte, self.reg_a);
             }
             Instruction::LDH_A_nptr => {
                 let byte = 0xFF00 + self.read_byte() as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LDH A, $({:02x})", byte);
+                    instruction_string.push_str(&format!("LDH A, $({:02x})", byte));
                 }
                 self.reg_a = self.read_mem(byte);
             }
@@ -305,29 +301,25 @@ impl Cpu {
                 match opcode {
                     0x01 => {
                         if self.print_instructions {
-                            instruction_string =
-                                instruction_string + &format!("LD BC, ${:04x}", value);
+                            instruction_string.push_str(&format!("LD BC, ${:04x}", value));
                         }
                         self.set_bc(value);
                     }
                     0x11 => {
                         if self.print_instructions {
-                            instruction_string =
-                                instruction_string + &format!("LD DE, ${:04x}", value);
+                            instruction_string.push_str(&format!("LD DE, ${:04x}", value));
                         }
                         self.set_de(value);
                     }
                     0x21 => {
                         if self.print_instructions {
-                            instruction_string =
-                                instruction_string + &format!("LD HL, ${:04x}", value);
+                            instruction_string.push_str(&format!("LD HL, ${:04x}", value));
                         }
                         self.set_hl(value);
                     }
                     0x31 => {
                         if self.print_instructions {
-                            instruction_string =
-                                instruction_string + &format!("LD SP, ${:04x}", value);
+                            instruction_string.push_str(&format!("LD SP, ${:04x}", value));
                         }
                         self.reg_sp = value;
                     }
@@ -336,7 +328,7 @@ impl Cpu {
             }
             Instruction::LD_SP_HL => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD SP,HL");
+                    instruction_string.push_str(&format!("LD SP,HL"));
                 }
                 self.reg_sp = self.hl();
                 // Need to add 4 more to total 8
@@ -346,7 +338,7 @@ impl Cpu {
                 // Sign extending
                 let n = ((self.read_byte() as i8) as i16) as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD HL, SP+${:02x}", n);
+                    instruction_string.push_str(&format!("LD HL, SP+${:02x}", n));
                 }
                 let result = self.reg_sp + n;
                 self.set_hl(result);
@@ -363,7 +355,7 @@ impl Cpu {
             Instruction::LD_nn_SP => {
                 let nn = u8s_as_u16(self.read_nn());
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("LD nn, SP");
+                    instruction_string.push_str(&format!("LD nn, SP"));
                 }
                 // FIXME: Should add 1 here?
                 self.reg_sp = nn;
@@ -376,25 +368,25 @@ impl Cpu {
                 match opcode {
                     0xF5 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("PUSH AF");
+                            instruction_string.push_str(&format!("PUSH AF"));
                         }
                         self.push_stack_u16(self.af());
                     }
                     0xC5 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("PUSH BC");
+                            instruction_string.push_str(&format!("PUSH BC"));
                         }
                         self.push_stack_u16(self.bc());
                     }
                     0xD5 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("PUSH DE");
+                            instruction_string.push_str(&format!("PUSH DE"));
                         }
                         self.push_stack_u16(self.de());
                     }
                     0xE5 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("PUSH HL");
+                            instruction_string.push_str(&format!("PUSH HL"));
                         }
                         self.push_stack_u16(self.hl());
                     }
@@ -408,25 +400,25 @@ impl Cpu {
                 match opcode {
                     0xF1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("POP AF");
+                            instruction_string.push_str(&format!("POP AF"));
                         }
                         self.set_af(value);
                     }
                     0xC1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("POP BC");
+                            instruction_string.push_str(&format!("POP BC"));
                         }
                         self.set_bc(value);
                     }
                     0xD1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("POP DE");
+                            instruction_string.push_str(&format!("POP DE"));
                         }
                         self.set_de(value);
                     }
                     0xE1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("POP HL");
+                            instruction_string.push_str(&format!("POP HL"));
                         }
                         self.set_hl(value);
                     }
@@ -440,12 +432,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("ADD ${:02x}", value);
+                        instruction_string.push_str(&format!("ADD ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("ADD {}", reg_char(n));
+                        instruction_string.push_str(&format!("ADD {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -462,12 +454,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("ADC ${:02x}", value);
+                        instruction_string.push_str(&format!("ADC ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("ADC {}", reg_char(n));
+                        instruction_string.push_str(&format!("ADC {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -485,12 +477,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SUB ${:02x}", value);
+                        instruction_string.push_str(&format!("SUB ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SUB {}", reg_char(n));
+                        instruction_string.push_str(&format!("SUB {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -508,12 +500,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SBC ${:02x}", value);
+                        instruction_string.push_str(&format!("SBC ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SBC {}", reg_char(n));
+                        instruction_string.push_str(&format!("SBC {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -530,12 +522,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("AND ${:02x}", value);
+                        instruction_string.push_str(&format!("AND ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("AND {}", reg_char(n));
+                        instruction_string.push_str(&format!("AND {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -550,12 +542,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("OR ${:02x}", value);
+                        instruction_string.push_str(&format!("OR ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("OR {}", reg_char(n));
+                        instruction_string.push_str(&format!("OR {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -570,12 +562,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("XOR ${:02x}", value);
+                        instruction_string.push_str(&format!("XOR ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("XOR {}", reg_char(n));
+                        instruction_string.push_str(&format!("XOR {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -590,12 +582,12 @@ impl Cpu {
                 let n = if n == 8 {
                     let value = self.read_byte();
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("CP ${:02x}", value);
+                        instruction_string.push_str(&format!("CP ${:02x}", value));
                     }
                     value
                 } else {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("CP {}", reg_char(n));
+                        instruction_string.push_str(&format!("CP {}", reg_char(n)));
                     }
                     self.read_reg_r(n)
                 };
@@ -606,7 +598,7 @@ impl Cpu {
             }
             Instruction::INC_n(r) => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("INC {}", reg_char(r));
+                    instruction_string.push_str(&format!("INC {}", reg_char(r)));
                 }
 
                 let n = self.read_reg_r(r);
@@ -619,7 +611,7 @@ impl Cpu {
             }
             Instruction::DEC_n(r) => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("DEC {}", reg_char(r));
+                    instruction_string.push_str(&format!("DEC {}", reg_char(r)));
                 }
 
                 let n = self.read_reg_r(r);
@@ -635,25 +627,25 @@ impl Cpu {
                 let nn = match nn {
                     0 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("ADD HL, BC");
+                            instruction_string.push_str(&format!("ADD HL, BC"));
                         }
                         self.bc()
                     }
                     1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("ADD HL, DE");
+                            instruction_string.push_str(&format!("ADD HL, DE"));
                         }
                         self.de()
                     }
                     2 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("ADD HL, HL");
+                            instruction_string.push_str(&format!("ADD HL, HL"));
                         }
                         self.hl()
                     }
                     3 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("ADD HL, SP");
+                            instruction_string.push_str(&format!("ADD HL, SP"));
                         }
                         self.reg_sp
                     }
@@ -674,7 +666,7 @@ impl Cpu {
                 // sign extend
                 let n = ((self.read_byte() as i8) as i16) as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("ADD SP, ${:x}", n);
+                    instruction_string.push_str(&format!("ADD SP, ${:x}", n));
                 }
                 let result = self.reg_sp + n;
 
@@ -690,28 +682,28 @@ impl Cpu {
                 match nn {
                     0 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("INC BC");
+                            instruction_string.push_str(&format!("INC BC"));
                         }
                         let value = self.bc();
                         self.set_bc(value + 1);
                     }
                     1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("INC DE");
+                            instruction_string.push_str(&format!("INC DE"));
                         }
                         let value = self.de();
                         self.set_de(value + 1);
                     }
                     2 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("INC HL");
+                            instruction_string.push_str(&format!("INC HL"));
                         }
                         let value = self.hl();
                         self.set_hl(value + 1);
                     }
                     3 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("INC SP");
+                            instruction_string.push_str(&format!("INC SP"));
                         }
                         self.reg_sp += 1;
                     }
@@ -723,28 +715,28 @@ impl Cpu {
                 match nn {
                     0 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("DEC BC");
+                            instruction_string.push_str(&format!("DEC BC"));
                         }
                         let value = self.bc();
                         self.set_bc(value - 1);
                     }
                     1 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("DEC DE");
+                            instruction_string.push_str(&format!("DEC DE"));
                         }
                         let value = self.de();
                         self.set_de(value - 1);
                     }
                     2 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("DEC HL");
+                            instruction_string.push_str(&format!("DEC HL"));
                         }
                         let value = self.hl();
                         self.set_hl(value - 1);
                     }
                     3 => {
                         if self.print_instructions {
-                            instruction_string = instruction_string + &format!("DEC SP");
+                            instruction_string.push_str(&format!("DEC SP"));
                         }
                         self.reg_sp -= 1;
                     }
@@ -755,7 +747,7 @@ impl Cpu {
 
             Instruction::CPL => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("CPL");
+                    instruction_string.push_str(&format!("CPL"));
                 }
                 self.reg_a = !self.reg_a;
                 self.flag_h = true;
@@ -763,7 +755,7 @@ impl Cpu {
             }
             Instruction::CCF => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("CCF");
+                    instruction_string.push_str(&format!("CCF"));
                 }
                 self.flag_c = !self.flag_c;
                 self.flag_n = false;
@@ -771,7 +763,7 @@ impl Cpu {
             }
             Instruction::SCF => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("SCF");
+                    instruction_string.push_str(&format!("SCF"));
                 }
                 self.flag_c = true;
                 self.flag_n = false;
@@ -779,12 +771,12 @@ impl Cpu {
             }
             Instruction::NOP => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("NOP");
+                    instruction_string.push_str(&format!("NOP"));
                 }
             }
             Instruction::HALT => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("HALT");
+                    instruction_string.push_str(&format!("HALT"));
                 }
                 self.cpu_state = CpuState::OffUntilInterrupt;
             }
@@ -792,27 +784,27 @@ impl Cpu {
                 // STOP always follows a 00
                 let byte = self.read_byte();
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("STOP");
+                    instruction_string.push_str(&format!("STOP"));
                 }
                 self.cpu_state = CpuState::OffUntilButtonPress;
                 self.interconnect.ppu.turn_lcd_off();
             }
             Instruction::DI => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("DI");
+                    instruction_string.push_str(&format!("DI"));
                 }
                 self.flag_disabling_interrupts = true;
             }
             Instruction::EI => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("EI");
+                    instruction_string.push_str(&format!("EI"));
                 }
                 self.flag_enabling_interrupts = true;
             }
 
             Instruction::RLCA => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RLCA");
+                    instruction_string.push_str(&format!("RLCA"));
                 }
                 let bit7 = self.reg_a >> 7;
                 self.reg_a <<= 1;
@@ -825,7 +817,7 @@ impl Cpu {
             }
             Instruction::RLA => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RLA");
+                    instruction_string.push_str(&format!("RLA"));
                 }
                 let bit7 = self.reg_a >> 7;
                 self.reg_a <<= 1;
@@ -838,7 +830,7 @@ impl Cpu {
             }
             Instruction::RRCA => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RRCA");
+                    instruction_string.push_str(&format!("RRCA"));
                 }
                 let bit0 = self.reg_a & 1;
                 self.reg_a >>= 1;
@@ -851,7 +843,7 @@ impl Cpu {
             }
             Instruction::RRA => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RRA");
+                    instruction_string.push_str(&format!("RRA"));
                 }
                 let bit0 = self.reg_a & 1;
                 self.reg_a >>= 1;
@@ -866,15 +858,14 @@ impl Cpu {
             Instruction::JP_nn => {
                 let address = u8s_as_u16(self.read_nn());
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("JP ${:04x}", address);
+                    instruction_string.push_str(&format!("JP ${:04x}", address));
                 }
                 self.reg_pc = address;
             }
             Instruction::JP_cc_nn(cc) => {
                 let address = u8s_as_u16(self.read_nn());
                 if self.print_instructions {
-                    instruction_string =
-                        instruction_string + &format!("JP {} ${:04x}", cc_to_char(cc), address);
+                    instruction_string.push_str(&format!("JP {} ${:04x}", cc_to_char(cc), address));
                 }
                 if self.check_cc(cc) {
                     self.reg_pc = address;
@@ -882,7 +873,7 @@ impl Cpu {
             }
             Instruction::JP_HLptr => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("JP (HL)");
+                    instruction_string.push_str(&format!("JP (HL)"));
                 }
                 self.reg_pc = self.hl();
             }
@@ -890,7 +881,7 @@ impl Cpu {
                 // Sign extend
                 let n = ((self.read_byte() as i8) as i16) as u16;
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("JR {}", n as i16);
+                    instruction_string.push_str(&format!("JR {}", n as i16));
                 }
                 self.reg_pc = self.reg_pc.wrapping_add(n);
                 self.add_cycles(4);
@@ -899,8 +890,7 @@ impl Cpu {
                 // Sign extend
                 let n = ((self.read_byte() as i8) as i16) as u16;
                 if self.print_instructions {
-                    instruction_string =
-                        instruction_string + &format!("JR {} {}", cc_to_char(cc), n as i16);
+                    instruction_string.push_str(&format!("JR {} {}", cc_to_char(cc), n as i16));
                 }
                 if self.check_cc(cc) {
                     self.reg_pc = self.reg_pc.wrapping_add(n);
@@ -911,7 +901,7 @@ impl Cpu {
             Instruction::CALL_nn => {
                 let nn = u8s_as_u16(self.read_nn());
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("CALL ${:04x}", nn);
+                    instruction_string.push_str(&format!("CALL ${:04x}", nn));
                 }
                 self.push_stack_u16(self.reg_pc);
                 self.reg_pc = nn;
@@ -921,8 +911,7 @@ impl Cpu {
             Instruction::CALL_cc_nn(cc) => {
                 let nn = u8s_as_u16(self.read_nn());
                 if self.print_instructions {
-                    instruction_string =
-                        instruction_string + &format!("CALL {} ${:04x}", cc_to_char(cc), nn);
+                    instruction_string.push_str(&format!("CALL {} ${:04x}", cc_to_char(cc), nn));
                 }
                 if self.check_cc(cc) {
                     self.push_stack_u16(self.reg_pc);
@@ -933,7 +922,7 @@ impl Cpu {
 
             Instruction::RST_n(n) => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RST ${:02x}H", n);
+                    instruction_string.push_str(&format!("RST ${:02x}H", n));
                 }
                 self.push_stack_u16(self.reg_pc);
                 self.reg_pc = n as u16;
@@ -941,7 +930,7 @@ impl Cpu {
             }
             Instruction::RET => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RET");
+                    instruction_string.push_str(&format!("RET"));
                 }
                 let address = self.pop_stack_u16();
                 self.reg_pc = address;
@@ -949,7 +938,7 @@ impl Cpu {
             }
             Instruction::RET_cc(cc) => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + &format!("RET {}", cc_to_char(cc));
+                    instruction_string.push_str(&format!("RET {}", cc_to_char(cc)));
                 }
                 if self.check_cc(cc) {
                     let address = self.pop_stack_u16();
@@ -959,7 +948,7 @@ impl Cpu {
             }
             Instruction::RETI => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + "RETI";
+                    instruction_string.push_str("RETI");
                 }
                 let address = self.pop_stack_u16();
                 self.reg_pc = address;
@@ -968,7 +957,7 @@ impl Cpu {
             }
             Instruction::DAA => {
                 if self.print_instructions {
-                    instruction_string = instruction_string + "DAA";
+                    instruction_string.push_str("DAA");
                 }
                 // https://ehaskins.com/2018-01-30%20Z80%20DAA/
                 let value = self.reg_a;
@@ -1026,8 +1015,7 @@ impl Cpu {
 
             let mut instruction_string = String::with_capacity(20);
             if self.print_instructions {
-                self.print_registers();
-                instruction_string = instruction_string + &format!("0x{:04x} ", self.reg_pc - 2);
+                instruction_string.push_str(&format!("0x{:04x} ", self.reg_pc - 2));
             }
 
             match inst {
@@ -1063,7 +1051,7 @@ impl Cpu {
 
                 CB_Instruction::RL_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("RL {}", reg_char(n));
+                        instruction_string.push_str(&format!("RL {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
@@ -1079,7 +1067,7 @@ impl Cpu {
                 }
                 CB_Instruction::RLC_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("RLC {}", reg_char(n));
+                        instruction_string.push_str(&format!("RLC {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
@@ -1096,7 +1084,7 @@ impl Cpu {
 
                 CB_Instruction::SLA_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SLA {}", reg_char(n));
+                        instruction_string.push_str(&format!("SLA {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
@@ -1111,7 +1099,7 @@ impl Cpu {
                 }
                 CB_Instruction::RRC_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("RRC {}", reg_char(n));
+                        instruction_string.push_str(&format!("RRC {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
@@ -1127,7 +1115,7 @@ impl Cpu {
                 }
                 CB_Instruction::SRA_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SRA {}", reg_char(n));
+                        instruction_string.push_str(&format!("SRA {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
@@ -1145,7 +1133,7 @@ impl Cpu {
                 }
                 CB_Instruction::SRL_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SRL {}", reg_char(n));
+                        instruction_string.push_str(&format!("SRL {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
@@ -1160,7 +1148,7 @@ impl Cpu {
                 }
                 CB_Instruction::RR_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("RR {}", reg_char(n));
+                        instruction_string.push_str(&format!("RR {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
@@ -1176,7 +1164,7 @@ impl Cpu {
                 }
                 CB_Instruction::SWAP_n(n) => {
                     if self.print_instructions {
-                        instruction_string = instruction_string + &format!("SWAP {}", reg_char(n));
+                        instruction_string.push_str(&format!("SWAP {}", reg_char(n)));
                     }
                     let mut value = self.read_reg_r(n);
                     value = value.swap_bytes();
