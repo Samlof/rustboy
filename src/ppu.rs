@@ -179,15 +179,15 @@ impl Ppu {
 
                 if self.ly > 153 {
                     self.ly = 0;
-                    self.main_window
-                        .update_with_buffer(&*self.viewport_buffer)
-                        .unwrap();
 
                     self.LCDC_status &= !0b11;
                     self.LCDC_status |= 0b10;
                     self.state = State::OAMSearch;
                 }
                 if self.ly == 145 {
+                    self.main_window
+                        .update_with_buffer(&*self.viewport_buffer)
+                        .unwrap();
                     return true;
                 }
             }

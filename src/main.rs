@@ -39,7 +39,7 @@ fn main() -> io::Result<()> {
     let (tx, rx) = channel::<console::CpuText>();
 
     cpu.set_console_tx(tx);
-    cpu.set_print_instruction(true);
+    cpu.set_print_instruction(false);
     let mut console = console::Console::new(rx);
 
     thread::spawn(move || console.start());

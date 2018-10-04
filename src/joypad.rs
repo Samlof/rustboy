@@ -1,4 +1,5 @@
 use super::utils::check_bit;
+use minifb::{Key, Window};
 
 enum Mode {
     Buttons,
@@ -18,16 +19,20 @@ pub enum Button {
 }
 
 pub struct Joypad {
+    register: u8,
     keys: u8,
 }
 
 impl Joypad {
     pub fn new() -> Self {
-        Joypad { keys: 0xFF }
+        Joypad {
+            register: 0,
+            keys: 0,
+        }
     }
     pub fn read(&self, address: u16) -> Option<u8> {
         match address {
-            0xFF00 => Some(self.keys),
+            0xFF00 => Some(self.register),
             _ => None,
         }
     }
@@ -37,55 +42,85 @@ impl Joypad {
         match address {
             0xFF00 => {
                 // First clear the upper 4 bits
-                self.keys &= 0x0F;
+                self.register &= 0x0F;
                 // Then write them
-                self.keys |= value & 0xF0
+                self.register |= value & 0xF0;
+                // Update the key values
+                self.update_register();
             }
             _ => return false,
         }
         true
     }
 
-    pub fn update_button(&mut self, btn: Button, pressed: bool) {
-        let bit = get_button_bit(self.button_mode(), btn);
-        if let Some(bit) = bit {
-            if pressed {
-                // Set the pressed button's bit to 0
-                self.keys &= !(1 << bit);
-            } else {
-                // Set the released button's bit to 1
-                self.keys |= (1 << bit);
+    pub fn update(&mut self, window: &Window) -> bool {
+        let mut interrupt = false;
+
+        self.update_button(Button::A, window.is_key_down(Key::Z));
+        self.update_button(Button::B, window.is_key_down(Key::X));
+        self.update_button(Button::Select, window.is_key_down(Key::C));
+        self.update_button(Button::Start, window.is_key_down(Key::Space));
+        self.update_button(Button::Up, window.is_key_down(Key::Up));
+        self.update_button(Button::Down, window.is_key_down(Key::Down));
+        self.update_button(Button::Right, window.is_key_down(Key::Right));
+        self.update_button(Button::Left, window.is_key_down(Key::Left));
+
+        // TODO: handle interrupt stuff
+        false
+    }
+
+    pub fn update_button(&mut self, btn: Button, pressed: bool) -> bool {
+        let bit = get_button_bit(btn);
+        if pressed {
+            let old_value = self.keys;
+            // Change the bit for down button to 1
+            self.keys |= 1 << bit;
+            // Check for interrupt
+            if check_bit(old_value, bit) {
+                return true;
+            }
+        } else {
+            // Button is up, so change the bit to 0
+            self.keys &= !(1 << bit);
+        }
+        false
+    }
+    fn update_register(&mut self) {
+        // Update direction keys
+        if !check_bit(self.register, 4) {
+            for i in 0..=3 {
+                let pressed = check_bit(self.keys, i);
+                if pressed {
+                    self.register &= !(1 << i);
+                } else {
+                    self.register |= 1 << i;
+                }
+            }
+        }
+        // Update buttons
+        if !check_bit(self.register, 5) {
+            for i in 0..=3 {
+                let pressed = check_bit(self.keys, 4 + i);
+                if pressed {
+                    self.register &= !(1 << i);
+                } else {
+                    self.register |= 1 << i;
+                }
             }
         }
     }
-
-    fn button_mode(&self) -> Mode {
-        if !check_bit(self.keys, 5) {
-            return Mode::Buttons;
-        }
-        if !check_bit(self.keys, 4) {
-            return Mode::Directions;
-        }
-        Mode::None
-    }
 }
 
-fn get_button_bit(mode: Mode, btn: Button) -> Option<u8> {
-    match mode {
-        Mode::Buttons => match btn {
-            Button::Start => Some(3),
-            Button::Select => Some(2),
-            Button::B => Some(1),
-            Button::A => Some(0),
-            _ => None,
-        },
-        Mode::Directions => match btn {
-            Button::Down => Some(3),
-            Button::Up => Some(2),
-            Button::Left => Some(1),
-            Button::Right => Some(0),
-            _ => None,
-        },
-        Mode::None => None,
+fn get_button_bit(btn: Button) -> u8 {
+    match btn {
+        Button::Down => 0,
+        Button::Up => 1,
+        Button::Left => 2,
+        Button::Right => 3,
+
+        Button::Start => 4,
+        Button::Select => 5,
+        Button::B => 6,
+        Button::A => 7,
     }
 }

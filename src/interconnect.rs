@@ -192,9 +192,25 @@ impl Interconnect {
         None
     }
 
+    pub fn get_button_interrupt(&mut self) -> Option<Interrupt> {
+        if check_bit(self.interrupt_flag, 4) {
+            // Clear the interrupt
+            self.interrupt_flag &= !(1 << 4);
+            Some(Interrupt::Joypad)
+        } else {
+            None
+        }
+    }
+
     pub fn update(&mut self) {
         if self.ppu.update() {
+            // vblank interrupt
             self.interrupt_flag |= 1;
+            // Update joypad
+            if self.joypad.update(&self.ppu.main_window) {
+                // joypad interrupt
+                self.interrupt_flag |= 1 << 4;
+            }
         }
     }
 
