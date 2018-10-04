@@ -116,6 +116,10 @@ impl Interconnect {
                 println!("Read to not usable area: 0x{:04x}", address);
                 0xFF
             }
+            0xFF4C..0xFF80 => {
+                println!("Read to not usable area: 0x{:04x}", address);
+                0xFF
+            }
             _ => panic!("Interconnect: Can't read memory address: 0x{:04x}", address),
         }
     }

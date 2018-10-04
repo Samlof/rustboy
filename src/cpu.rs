@@ -28,18 +28,6 @@ pub struct Cpu {
     reg_sp: u16,
     reg_pc: u16,
 
-    flag_z: bool,
-    flag_n: bool,
-    /*This bit is set if a carry occurred from the lower
-        nibble in the last math operation.
-    */
-    flag_h: bool,
-    /*This bit is set if a carry occurred from the last
-        math operation or if register A is the smaller value
-        when executing the CP instruction.
-    */
-    flag_c: bool,
-
     // Interrupt related flags
     // Interrupt master flag
     flag_ime: bool,
@@ -68,11 +56,6 @@ impl Cpu {
             reg_l: 0,
             reg_sp: 0,
             reg_pc: 0,
-
-            flag_z: false, // Zero flag
-            flag_n: false, // Subtract flag
-            flag_h: false, // Half Carry flag
-            flag_c: false, // Carry flag
 
             flag_ime: false,
             flag_disabling_interrupts: false,
@@ -343,11 +326,11 @@ impl Cpu {
                 let result = self.reg_sp + n;
                 self.set_hl(result);
 
-                self.flag_z = false;
-                self.flag_n = false;
+                self.set_flag_z(false);
+                self.set_flag_n(false);
 
-                self.flag_h = ((self.reg_sp ^ n ^ result) & 0x10) == 0x10;
-                self.flag_c = ((self.reg_sp ^ n ^ result) & 0x100) == 0x100;
+                self.set_flag_h(((self.reg_sp ^ n ^ result) & 0x10) == 0x10);
+                self.set_flag_c(((self.reg_sp ^ n ^ result) & 0x100) == 0x100);
 
                 // Need to add 4 more to total 12
                 self.add_cycles(4);
@@ -445,10 +428,10 @@ impl Cpu {
                 let carrybits = (self.reg_a ^ n) as u16 ^ result;
                 self.reg_a = result as u8;
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = false;
-                self.flag_c = carrybits & 0x100 != 0;
-                self.flag_h = carrybits & 0x10 != 0;
+                self.set_flag_z(self.reg_a == 0);
+                self.set_flag_n(false);
+                self.set_flag_c(carrybits & 0x100 != 0);
+                self.set_flag_h(carrybits & 0x10 != 0);
             }
             Instruction::ADC_n(n) => {
                 let n = if n == 8 {
@@ -463,13 +446,13 @@ impl Cpu {
                     }
                     self.read_reg_r(n)
                 };
-                let carry = self.flag_c as u16;
+                let carry = self.flag_c() as u16;
                 let result: u16 = self.reg_a as u16 + n as u16 + carry;
 
-                self.flag_z = result as u8 == 0;
-                self.flag_n = false;
-                self.flag_h = (self.reg_a & 0xF) + (n & 0xF) + carry as u8 > 0xF;
-                self.flag_c = result > 0xFF;
+                self.set_flag_z(result as u8 == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((self.reg_a & 0xF) + (n & 0xF) + carry as u8 > 0xF);
+                self.set_flag_c(result > 0xFF);
 
                 self.reg_a = result as u8;
             }
@@ -491,10 +474,10 @@ impl Cpu {
                 let carrybits = (self.reg_a ^ n) as i16 ^ result;
                 self.reg_a = result as u8;
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = true;
-                self.flag_h = carrybits & 0x10 != 0;
-                self.flag_c = carrybits & 0x100 != 0;
+                self.set_flag_z(self.reg_a == 0);
+                self.set_flag_n(true);
+                self.set_flag_h(carrybits & 0x10 != 0);
+                self.set_flag_c(carrybits & 0x100 != 0);
             }
             Instruction::SBC_n(n) => {
                 let n = if n == 8 {
@@ -509,14 +492,14 @@ impl Cpu {
                     }
                     self.read_reg_r(n)
                 };
-                let carry = self.flag_c as i16;
+                let carry = self.flag_c() as i16;
                 // FIXME: sign extend??
                 let result = self.reg_a as i16 - n as i16 - carry;
 
-                self.flag_z = result as u8 == 0;
-                self.flag_n = true;
-                self.flag_c = result < 0;
-                self.flag_h = (self.reg_a as i16 & 0xF) - (n as i16 & 0xF) - carry < 0;
+                self.set_flag_z(result as u8 == 0);
+                self.set_flag_n(true);
+                self.set_flag_c(result < 0);
+                self.set_flag_h((self.reg_a as i16 & 0xF) - (n as i16 & 0xF) - carry < 0);
             }
             Instruction::AND_n(n) => {
                 let n = if n == 8 {
@@ -533,10 +516,10 @@ impl Cpu {
                 };
                 self.reg_a = self.reg_a & n;
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = false;
-                self.flag_h = true;
-                self.flag_c = false;
+                self.set_flag_z(self.reg_a == 0);
+                self.set_flag_n(false);
+                self.set_flag_h(true);
+                self.set_flag_c(false);
             }
             Instruction::OR_n(n) => {
                 let n = if n == 8 {
@@ -553,10 +536,10 @@ impl Cpu {
                 };
                 self.reg_a = self.reg_a | n;
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = false;
+                self.set_flag_z(self.reg_a == 0);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(false);
             }
             Instruction::XOR_n(n) => {
                 let n = if n == 8 {
@@ -573,10 +556,10 @@ impl Cpu {
                 };
                 self.reg_a = self.reg_a ^ n;
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = false;
+                self.set_flag_z(self.reg_a == 0);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(false);
             }
             Instruction::CP_n(n) => {
                 let n = if n == 8 {
@@ -591,10 +574,10 @@ impl Cpu {
                     }
                     self.read_reg_r(n)
                 };
-                self.flag_n = true;
-                self.flag_c = self.reg_a < n;
-                self.flag_z = self.reg_a == n;
-                self.flag_h = (self.reg_a.wrapping_sub(n)) & 0xF > self.reg_a & 0xF;
+                self.set_flag_n(true);
+                self.set_flag_c(self.reg_a < n);
+                self.set_flag_z(self.reg_a == n);
+                self.set_flag_h((self.reg_a.wrapping_sub(n)) & 0xF > self.reg_a & 0xF);
             }
             Instruction::INC_n(r) => {
                 if self.print_instructions {
@@ -604,9 +587,9 @@ impl Cpu {
                 let n = self.read_reg_r(r);
                 let result = n.wrapping_add(1);
 
-                self.flag_z = result == 0;
-                self.flag_n = false;
-                self.flag_h = result & 0x0F == 0;
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h(result & 0x0F == 0);
                 self.write_reg_r(r, result);
             }
             Instruction::DEC_n(r) => {
@@ -617,9 +600,9 @@ impl Cpu {
                 let n = self.read_reg_r(r);
                 let result = n.wrapping_sub(1);
 
-                self.flag_z = result == 0;
-                self.flag_n = true;
-                self.flag_h = result & 0x0F == 0x0F;
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h(result & 0x0F == 0x0F);
                 self.write_reg_r(r, result);
             }
 
@@ -654,9 +637,9 @@ impl Cpu {
                 let nn = nn as u32;
                 let result = self.hl() as u32 + nn;
 
-                self.flag_n = false;
-                self.flag_h = (self.hl() as u32 & 0xFFF) + (nn & 0xFFF) > 0xFFF;
-                self.flag_c = result > 0xFFFF;
+                self.set_flag_n(false);
+                self.set_flag_h((self.hl() as u32 & 0xFFF) + (nn & 0xFFF) > 0xFFF);
+                self.set_flag_c(result > 0xFFFF);
 
                 self.set_hl(result as u16);
 
@@ -670,10 +653,10 @@ impl Cpu {
                 }
                 let result = self.reg_sp + n;
 
-                self.flag_z = false;
-                self.flag_n = false;
-                self.flag_h = (self.reg_sp ^ n ^ (result & 0xFFFF)) & 0x10 == 0x10;
-                self.flag_c = (self.reg_sp ^ n ^ (result & 0xFFFF)) & 0x100 == 0x100;
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h((self.reg_sp ^ n ^ (result & 0xFFFF)) & 0x10 == 0x10);
+                self.set_flag_c((self.reg_sp ^ n ^ (result & 0xFFFF)) & 0x100 == 0x100);
 
                 self.reg_sp = result;
                 self.add_cycles(8);
@@ -750,24 +733,24 @@ impl Cpu {
                     instruction_string.push_str(&format!("CPL"));
                 }
                 self.reg_a = !self.reg_a;
-                self.flag_h = true;
-                self.flag_n = true;
+                self.set_flag_h(true);
+                self.set_flag_n(true);
             }
             Instruction::CCF => {
                 if self.print_instructions {
                     instruction_string.push_str(&format!("CCF"));
                 }
-                self.flag_c = !self.flag_c;
-                self.flag_n = false;
-                self.flag_h = false;
+                self.set_flag_c(!self.flag_c());
+                self.set_flag_n(false);
+                self.set_flag_h(false);
             }
             Instruction::SCF => {
                 if self.print_instructions {
                     instruction_string.push_str(&format!("SCF"));
                 }
-                self.flag_c = true;
-                self.flag_n = false;
-                self.flag_h = false;
+                self.set_flag_c(true);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
             }
             Instruction::NOP => {
                 if self.print_instructions {
@@ -810,10 +793,10 @@ impl Cpu {
                 self.reg_a <<= 1;
                 self.reg_a += bit7;
 
-                self.flag_z = false;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = bit7 == 1;
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(bit7 == 1);
             }
             Instruction::RLA => {
                 if self.print_instructions {
@@ -821,12 +804,12 @@ impl Cpu {
                 }
                 let bit7 = self.reg_a >> 7;
                 self.reg_a <<= 1;
-                self.reg_a += self.flag_c as u8;
+                self.reg_a += self.flag_c() as u8;
 
-                self.flag_z = false;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = bit7 == 1;
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(bit7 == 1);
             }
             Instruction::RRCA => {
                 if self.print_instructions {
@@ -836,10 +819,10 @@ impl Cpu {
                 self.reg_a >>= 1;
                 self.reg_a += bit0 << 7;
 
-                self.flag_z = false;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = bit0 == 1;
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(bit0 == 1);
             }
             Instruction::RRA => {
                 if self.print_instructions {
@@ -847,12 +830,12 @@ impl Cpu {
                 }
                 let bit0 = self.reg_a & 1;
                 self.reg_a >>= 1;
-                self.reg_a += (self.flag_c as u8) << 7;
+                self.reg_a += (self.flag_c() as u8) << 7;
 
-                self.flag_z = false;
-                self.flag_n = false;
-                self.flag_h = false;
-                self.flag_c = bit0 == 1;
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(bit0 == 1);
             }
 
             Instruction::JP_nn => {
@@ -956,30 +939,36 @@ impl Cpu {
                 self.add_cycles(8);
             }
             Instruction::DAA => {
+                self.print_registers();
                 if self.print_instructions {
                     instruction_string.push_str("DAA");
                 }
-                // https://ehaskins.com/2018-01-30%20Z80%20DAA/
-                let value = self.reg_a;
-                let mut correction = 0;
-                if self.flag_h || (!self.flag_n && (value & 0xF) > 9) {
-                    correction |= 0x06;
-                    self.flag_c = false;
-                }
-                if self.flag_c || (!self.flag_n && value > 0x9F) {
-                    correction |= 0x60;
-                    self.flag_c = true;
-                }
-                let correction = if self.flag_n {
-                    // Negate the correction
-                    0xFF - correction
+                let mut a = self.reg_a as u16;
+                if !self.flag_n() {
+                    if self.flag_h() || ((a & 0xF) > 9) {
+                        a += 0x06;
+                    }
+                    if self.flag_c() || (a > 0x9F) {
+                        a += 0x60;
+                    }
                 } else {
-                    correction
-                };
-                self.reg_a = self.reg_a.wrapping_add(correction);
+                    if self.flag_h() {
+                        a = (a.wrapping_sub(6)) & 0xFF;
+                    }
+                    if self.flag_c() {
+                        a = a.wrapping_sub(0x60);
+                    }
+                }
 
-                self.flag_z = self.reg_a == 0;
-                self.flag_h = false;
+                self.set_flag_h(false);
+                if a >= 0x100 {
+                    self.set_flag_c(true);
+                }
+
+                a &= 0xFF;
+                self.set_flag_z(a == 0);
+
+                self.reg_a = a as u8;
             }
             Instruction::CB => self.handle_cb_opcode(),
         }
@@ -1026,9 +1015,9 @@ impl Cpu {
                     }
                     // Get r value and check bit b on it
                     let value = self.read_reg_r(r);
-                    self.flag_z = value & (1 << b) == 0;
-                    self.flag_h = true;
-                    self.flag_n = false;
+                    self.set_flag_z(value & (1 << b) == 0);
+                    self.set_flag_h(true);
+                    self.set_flag_n(false);
                 }
                 CB_Instruction::SET_b_r(b, r) => {
                     if self.print_instructions {
@@ -1056,12 +1045,12 @@ impl Cpu {
                     let mut value = self.read_reg_r(n);
                     let bit7 = value >> 7;
                     value <<= 1;
-                    value += self.flag_c as u8;
+                    value += self.flag_c() as u8;
 
-                    self.flag_c = bit7 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit7 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1074,10 +1063,10 @@ impl Cpu {
                     value <<= 1;
                     value |= bit7;
 
-                    self.flag_c = bit7 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit7 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1090,10 +1079,10 @@ impl Cpu {
                     let bit7 = value >> 7;
                     value <<= 1;
 
-                    self.flag_c = bit7 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit7 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1106,10 +1095,10 @@ impl Cpu {
                     value >>= 1;
                     value |= (bit0) << 7;
 
-                    self.flag_c = bit0 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit0 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1124,10 +1113,10 @@ impl Cpu {
                     // bit 7 stays where it was
                     value |= (bit7) << 7;
 
-                    self.flag_c = bit0 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit0 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1139,10 +1128,10 @@ impl Cpu {
                     let bit0 = value & 0b1;
                     value >>= 1;
 
-                    self.flag_c = bit0 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit0 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1153,12 +1142,12 @@ impl Cpu {
                     let mut value = self.read_reg_r(n);
                     let bit0 = value & 0b1;
                     value >>= 1;
-                    value |= (self.flag_c as u8) << 7;
+                    value |= (self.flag_c() as u8) << 7;
 
-                    self.flag_c = bit0 == 1;
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
+                    self.set_flag_c(bit0 == 1);
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1171,10 +1160,10 @@ impl Cpu {
                     let high = (value & 0xF0) >> 4;
                     value = (low << 4) | high;
 
-                    self.flag_z = value == 0;
-                    self.flag_n = false;
-                    self.flag_h = false;
-                    self.flag_c = false;
+                    self.set_flag_z(value == 0);
+                    self.set_flag_n(false);
+                    self.set_flag_h(false);
+                    self.set_flag_c(false);
 
                     self.write_reg_r(n, value);
                 }
@@ -1226,23 +1215,29 @@ impl Cpu {
 
     fn print_registers(&self) {
         print!("a: 0x{:02x}, ", self.reg_a);
+        print!("f: 0x{:02x}, ", self.reg_f);
         print!("b: 0x{:02x}, ", self.reg_b);
         print!("c: 0x{:02x}, ", self.reg_c);
         print!("d: 0x{:02x}, ", self.reg_d);
         println!("e: 0x{:02x}", self.reg_e);
-        print!("Flag Z: {}, ", self.flag_z);
-        print!("Flag N: {}, ", self.flag_n);
-        print!("Flag H: {}, ", self.flag_h);
-        println!("Flag C: {}, ", self.flag_c);
-        println!("HL: {:04x}, ", self.hl());
+        print!("Flag Z: {}, ", self.flag_z());
+        print!("Flag N: {}, ", self.flag_n());
+        print!("Flag H: {}, ", self.flag_h());
+        println!("Flag C: {}, ", self.flag_c());
+        println!(
+            "HL: {:04x}, PC: {:04x}, SP: {:04x}",
+            self.hl(),
+            self.reg_pc,
+            self.reg_sp
+        );
     }
 
     fn check_cc(&self, cc: u8) -> bool {
         match cc {
-            0 => !self.flag_z,
-            1 => self.flag_z,
-            2 => !self.flag_c,
-            3 => self.flag_c,
+            0 => !self.flag_z(),
+            1 => self.flag_z(),
+            2 => !self.flag_c(),
+            3 => self.flag_c(),
             _ => unreachable!(),
         }
     }
@@ -1291,6 +1286,56 @@ impl Cpu {
     }
 
     #[inline(always)]
+    fn flag_z(&self) -> bool {
+        (self.reg_f & 0x80) > 0
+    }
+    #[inline(always)]
+    fn flag_n(&self) -> bool {
+        (self.reg_f & 0x40) > 0
+    }
+    #[inline(always)]
+    fn flag_h(&self) -> bool {
+        (self.reg_f & 0x20) > 0
+    }
+    #[inline(always)]
+    fn flag_c(&self) -> bool {
+        (self.reg_f & 0x10) > 0
+    }
+
+    #[inline(always)]
+    fn set_flag_z(&mut self, value: bool) {
+        if value {
+            self.reg_f |= 1 << 7;
+        } else {
+            self.reg_f &= !(1 << 7);
+        }
+    }
+    #[inline(always)]
+    fn set_flag_n(&mut self, value: bool) {
+        if value {
+            self.reg_f |= 1 << 6;
+        } else {
+            self.reg_f &= !(1 << 6);
+        }
+    }
+    #[inline(always)]
+    fn set_flag_h(&mut self, value: bool) {
+        if value {
+            self.reg_f |= 1 << 5;
+        } else {
+            self.reg_f &= !(1 << 5);
+        }
+    }
+    #[inline(always)]
+    fn set_flag_c(&mut self, value: bool) {
+        if value {
+            self.reg_f |= 1 << 4;
+        } else {
+            self.reg_f &= !(1 << 4);
+        }
+    }
+
+    #[inline(always)]
     fn bc(&self) -> u16 {
         u8s_as_u16((self.reg_b, self.reg_c))
     }
@@ -1308,7 +1353,7 @@ impl Cpu {
     fn set_af(&mut self, val: u16) {
         let (h, l) = u16_as_u8s(val);
         self.reg_a = h;
-        self.reg_f = l;
+        self.reg_f = l & 0xF0;
     }
 
     fn set_bc(&mut self, val: u16) {

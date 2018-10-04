@@ -35,7 +35,12 @@ impl Cartridge {
                 Some(self.rom[address as usize - ROM_BANK0_START as usize])
             }
             SWITCH_ROM_BANK_START..SWITCH_ROM_BANK_END => {
-                let start_address = self.rom_bank_nr as usize * SWITCH_ROM_BANK_LENGTH as usize;
+                let mut bank_nr = self.rom_bank_nr;
+                if bank_nr == 0 {
+                    bank_nr = 1;
+                }
+                println!("rom_nr: {}", self.rom_bank_nr);
+                let start_address = bank_nr as usize * SWITCH_ROM_BANK_LENGTH as usize;
                 Some(self.rom[start_address + (address - SWITCH_ROM_BANK_START) as usize])
             }
 
