@@ -97,7 +97,7 @@ pub fn parse(byte: u8) -> Option<Instruction> {
             let r2 = byte & 7;
             Some(Instruction::LD_r1_r2(r1, r2))
         }
-        0x06 | 0x0E | 0x16 | 0x1E | 0x26 | 0x2E | 0x3E => {
+        0x06 | 0x0E | 0x16 | 0x1E | 0x26 | 0x2E | 0x36 | 0x3E => {
             Some(Instruction::LD_r1_n((byte - 0x06) / 8))
         }
         0x0A | 0x1A | 0xFA => Some(Instruction::LD_A_nnptr),

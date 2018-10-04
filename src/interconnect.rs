@@ -1,7 +1,9 @@
 use super::cartridge::*;
+use super::joypad::*;
 use super::ppu::*;
 use super::sound_subsystem::*;
 use super::timer::*;
+use super::utils::check_bit;
 use crate::memory_map::*;
 use enum_primitive_derive::*;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -26,6 +28,7 @@ pub struct Interconnect {
     pub ppu: Ppu,
     sound: SoundSubsystem,
     timer: Timer,
+    joypad: Joypad,
 
     interrupt_flag: u8,
     interrupt_enable: u8,
@@ -43,6 +46,7 @@ impl Interconnect {
             ppu: Ppu::new(),
             sound: SoundSubsystem::new(),
             timer: Timer::new(),
+            joypad: Joypad::new(),
             interrupt_flag: 0,
             interrupt_enable: 0,
             booting: true,
@@ -73,8 +77,14 @@ impl Interconnect {
                 self.ppu.write_sprite_mem(address, value);
             }
             INTERRUPT_REGISTER => self.interrupt_enable = value,
-            0xFEA0...0xFEFF => println!("Not usable area"),
-            IO_PORTS_END...0xFF7F => println!("No idea what's here"),
+            0xFEA0...0xFEFF => println!(
+                "Write to not usable area: 0x{:04x}, value: 0x{:02x}",
+                address, value
+            ),
+            IO_PORTS_END...0xFF7F => println!(
+                "Write to unknown area: 0x{:04x}, value: 0x{:02x}",
+                address, value
+            ),
             _ => panic!(
                 "Interconnect: Can't write memory address: 0x{:04x}, value: 0x{:02x}",
                 address, value
@@ -103,7 +113,7 @@ impl Interconnect {
             SPRITE_MEM_START..SPRITE_MEM_END => self.ppu.read_sprite_mem(address),
             INTERRUPT_REGISTER => self.interrupt_enable,
             0xFEA0...0xFEFF => {
-                println!("Not usable area");
+                println!("Read to not usable area: 0x{:04x}", address);
                 0xFF
             }
             _ => panic!("Interconnect: Can't read memory address: 0x{:04x}", address),
@@ -120,6 +130,10 @@ impl Interconnect {
             return ret;
         }
         let res = self.timer.read(address);
+        if let Some(ret) = res {
+            return ret;
+        }
+        let res = self.joypad.read(address);
         if let Some(ret) = res {
             return ret;
         }
@@ -142,7 +156,9 @@ impl Interconnect {
         if self.timer.write(address, value) {
             return;
         }
-
+        if self.joypad.write(address, value) {
+            return;
+        }
         match address {
             0xFF0F => self.interrupt_flag = value,
             0xFF01 => {
@@ -185,11 +201,6 @@ impl Interconnect {
     pub fn boot(&self) -> &Vec<u8> {
         &self.boot
     }
-}
-
-#[inline(always)]
-fn check_bit(val: u8, b: u8) -> bool {
-    val & (1 << b) > 0
 }
 
 #[cfg(test)]

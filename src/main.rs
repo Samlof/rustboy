@@ -19,10 +19,12 @@ mod console;
 mod cpu;
 mod instruction;
 mod interconnect;
+mod joypad;
 mod memory_map;
 mod ppu;
 mod sound_subsystem;
 mod timer;
+mod utils;
 
 const WIDTH: usize = 256;
 const HEIGHT: usize = 256;

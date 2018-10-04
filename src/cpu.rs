@@ -155,7 +155,7 @@ impl Cpu {
             Some(o) => o,
             None => {
                 self.send_instr_text(format!(
-                    "{:04x}  Undefined opcode: {:02x}!",
+                    "0x{:04x}  Undefined opcode: 0x{:02x}",
                     self.reg_pc - 1,
                     opcode
                 ));
@@ -1371,11 +1371,6 @@ fn u16_as_u8s(val: u16) -> (u8, u8) {
 #[inline(always)]
 fn u8s_as_u16(val: (u8, u8)) -> u16 {
     ((val.0 as u16) << 8) + val.1 as u16
-}
-
-#[inline(always)]
-fn check_borrow_bit4(old: u8, new: u8) -> bool {
-    (old >> 3) == (new >> 3)
 }
 
 #[allow(non_snake_case)]
