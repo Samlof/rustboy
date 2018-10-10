@@ -115,7 +115,6 @@ impl Cpu {
             None => return,
         };
 
-        println!("In interrupt: {:?}", interrupt);
         if let Some(ref tx) = self.console_tx {
             tx.send(CpuText::Interrupt(format!("{:?}", interrupt)));
         }
@@ -943,7 +942,6 @@ impl Cpu {
                 self.add_cycles(8);
             }
             Instruction::DAA => {
-                self.print_registers();
                 if self.print_instructions {
                     instruction_string.push_str("DAA");
                 }

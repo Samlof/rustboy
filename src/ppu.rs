@@ -1,6 +1,7 @@
 use super::interconnect::Interconnect;
 use super::memory_map;
 use crate::memory_map::*;
+use crate::utils::check_bit;
 use enum_primitive_derive::*;
 use minifb::Window;
 use minifb::{Key, Scale, WindowOptions};
@@ -87,7 +88,6 @@ enum State {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug)]
 pub struct Ppu {
     LCD_control: u8, // FF40
     LCDC_status: u8, // FF41
@@ -95,7 +95,6 @@ pub struct Ppu {
     scx: u8,         // FF43
     ly: u8,          // FF44
     lyc: u8,         // FF45
-    dma: u8,         // FF46
     bgp: u8,         // FF47
     obp0: u8,        // FF48
     obp1: u8,        // FF49
@@ -108,6 +107,7 @@ pub struct Ppu {
     vram: Box<[u8]>,
 
     buffer: Vec<u8>,
+    sprites: Vec<Sprite>,
     viewport_buffer: Vec<u32>,
 
     cycles: i32,
@@ -128,7 +128,6 @@ impl Ppu {
             wy: 0,
             wx: 0,
             scx: 0,
-            dma: 0,
 
             sprite_memory: vec![0; SPRITE_MEM_LENGTH as usize].into_boxed_slice(),
             vram: vec![0; VRAM_LENGTH as usize].into_boxed_slice(),
@@ -136,6 +135,7 @@ impl Ppu {
             main_window: create_window(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "Rustboy", Scale::X4),
 
             buffer: vec![0; WIDTH * HEIGHT],
+            sprites: Vec::with_capacity(20),
             viewport_buffer: vec![0; VIEWPORT_WIDTH * VIEWPORT_HEIGHT],
             cycles: 0,
             state: State::OAMSearch,
@@ -152,18 +152,24 @@ impl Ppu {
         match self.state {
             State::OAMSearch => {
                 self.cycles = 20;
-
+                // Find sprites
+                self.oam_search();
                 // Change status
                 self.state = State::PixelTransfer;
                 self.LCDC_status |= 0b11;
             }
             State::PixelTransfer => {
+                self.cycles = 43;
+
                 self.pixel_transfer();
+                // Change status
+                self.state = State::HBlank;
+                self.LCDC_status &= !0b11;
             }
             State::HBlank => {
                 self.cycles = 51;
                 self.ly += 1;
-                self.state = if self.ly > 143 {
+                self.state = if self.ly == 144 {
                     self.LCDC_status &= !0b11;
                     self.LCDC_status |= 0b01;
                     State::VBlank
@@ -177,7 +183,7 @@ impl Ppu {
                 self.ly += 1;
                 self.cycles = 114;
 
-                if self.ly > 153 {
+                if self.ly == 154 {
                     self.ly = 0;
 
                     self.LCDC_status &= !0b11;
@@ -195,6 +201,19 @@ impl Ppu {
         return false;
     }
 
+    fn oam_search(&mut self) {
+        self.sprites.clear();
+        // One sprite has 4 bytes
+        for i in (0..40).map(|x| x * 4) {
+            let sprite = create_sprite(&self.sprite_memory, i, false);
+            // Filter only sprites visible
+            if self.scy < sprite.y && self.scy > sprite.y.saturating_sub(16) {
+                if sprite.x > 0 && sprite.x < 168 {
+                    self.sprites.push(sprite);
+                }
+            }
+        }
+    }
     pub fn turn_lcd_off(&mut self) {
         // TODO:
     }
@@ -206,7 +225,6 @@ impl Ppu {
             0xFF43 => Some(self.scx),
             0xFF44 => Some(self.ly),
             0xFF45 => Some(self.lyc),
-            0xFF46 => Some(self.dma),
             0xFF47 => Some(self.bgp),
             0xFF48 => Some(self.obp0),
             0xFF49 => Some(self.obp1),
@@ -217,9 +235,6 @@ impl Ppu {
     }
 
     pub fn pixel_transfer(&mut self) {
-        // TODO: can split up the writing some day
-        self.cycles = 43;
-
         // scy is the viewport top. ly is which line in the viewport
         let line = self.ly as u16 + self.scy as u16;
         let line = line % VIEWPORT_HEIGHT as u16;
@@ -233,9 +248,24 @@ impl Ppu {
                 bg_bit_into_color(color);
         }
 
-        // Change status
-        self.state = State::HBlank;
-        self.LCDC_status &= !0b11;
+        // Draw sprites
+        for s in self.sprites.iter() {
+            println!("Drawing sprite: {}", s.tile_nr);
+            let byte1 = self.get_from_vram(0x8000 + s.tile_nr as u16 * 16);
+            let byte2 = self.get_from_vram(0x8000 + s.tile_nr as u16 * 16 + 1);
+
+            let start_x = s.x;
+            let sprite_y = s.y - self.ly;
+            for j in 0..8 {
+                if j > start_x || start_x - j > WIDTH as u8 {
+                    continue;
+                }
+                let x = start_x - j;
+                let color = (byte1 >> (7 - j) & 1) | ((byte2 >> (7 - j) & 1) << 1);
+                self.viewport_buffer[(self.ly as usize * VIEWPORT_WIDTH) + x as usize] =
+                    bg_bit_into_color(color);
+            }
+        }
     }
 
     fn update_bg_tile(&mut self, map_addr: u16, tile_data_nr: u8) {
@@ -339,7 +369,6 @@ impl Ppu {
                 self.state = State::VBlank;
             }
             0xFF45 => self.lyc = value,
-            0xFF46 => self.dma = value,
             0xFF47 => self.bgp = value,
             0xFF48 => self.obp0 = value,
             0xFF49 => self.obp1 = value,
@@ -420,8 +449,35 @@ impl Ppu {
             _ => Color::Black,
         }
     }
+
+    pub fn add_cycles(&mut self, c: i32) {
+        self.cycles += c;
+    }
 }
 
+struct Sprite {
+    y: u8,
+    x: u8,
+    tile_nr: u8,
+    above_bg: bool,
+    y_flip: bool,
+    x_flip: bool,
+    palette_nr: u8,
+    tile_vram_bank: u8,
+}
+
+fn create_sprite(oam_mem: &[u8], address: usize, cgb_mode: bool) -> Sprite {
+    Sprite {
+        y: oam_mem[address],
+        x: oam_mem[address + 1],
+        tile_nr: oam_mem[address + 2],
+        above_bg: !check_bit(oam_mem[address + 3], 7),
+        y_flip: check_bit(oam_mem[address + 3], 6),
+        x_flip: check_bit(oam_mem[address + 3], 5),
+        palette_nr: oam_mem[address + 3] & if cgb_mode { 0x07 } else { 0x10 },
+        tile_vram_bank: oam_mem[address + 3] & 0x08,
+    }
+}
 fn pause() {
     println!("Paused!");
     use std::io;
