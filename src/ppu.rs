@@ -218,6 +218,11 @@ impl Ppu {
     }
 
     pub fn pixel_transfer(&mut self) {
+        self.draw_background();
+        self.draw_sprites();
+    }
+
+    fn draw_background(&mut self) {
         // scy is the viewport top. ly is which line in the viewport
         let line = self.ly as u16 + self.scy as u16;
         let line = line % VIEWPORT_HEIGHT as u16;
@@ -230,8 +235,6 @@ impl Ppu {
             self.viewport_buffer[(self.ly as usize * VIEWPORT_WIDTH) + i] =
                 bg_bit_into_color(color);
         }
-
-        self.draw_sprites();
     }
 
     fn draw_sprites(&mut self) {
@@ -247,17 +250,18 @@ impl Ppu {
                 if !(self.ly > sprite.y) {}
             }
             // Check if the sprite is on this line
-            if sprite.y == 0 || self.ly > sprite.y || self.ly < sprite.y - sprite_height {
+            if sprite.y == 0 || self.ly < sprite.y || self.ly >= sprite.y + sprite_height {
                 continue;
             }
             // Check if x is visible
             if sprite.x == 0 || sprite.x >= 168 {
                 continue;
             }
+            println!("sprite y: {}, ly: {}", sprite.y, self.ly);
             // Draw the right line
             // sprite.y - self.ly gives the distance from bottom of the sprite
             // sprite_height - that to give it from top
-            let line_to_draw = sprite_height - (sprite.y - self.ly);
+            let line_to_draw = self.ly - sprite.y;
 
             if sprite_height == 8 {
                 let bytes_to_skip = line_to_draw as u16 * 2;
@@ -266,11 +270,11 @@ impl Ppu {
                 let byte2 = self.get_from_vram(tile_addr + bytes_to_skip + 1);
 
                 for j in 0..8 {
-                    let buffer_col = sprite.x - j;
+                    let buffer_col = sprite.x + j;
                     if buffer_col > VIEWPORT_WIDTH as u8 {
                         continue;
                     }
-                    let color = ((byte1 >> j) & 1) | (((byte2 >> j) & 1) << 1);
+                    let color = ((byte1 >> (7 - j)) & 1) | (((byte2 >> (7 - j)) & 1) << 1);
                     if color == 0 {
                         // color of 0 is transparent for sprites
                         continue;
@@ -486,8 +490,8 @@ struct Sprite {
 
 fn create_sprite(oam_mem: &[u8], address: usize, cgb_mode: bool) -> Sprite {
     Sprite {
-        y: oam_mem[address] - 8,
-        x: oam_mem[address + 1],
+        y: oam_mem[address] - 16,
+        x: oam_mem[address + 1] - 8,
         tile_nr: oam_mem[address + 2],
         above_bg: !check_bit(oam_mem[address + 3], 7),
         y_flip: check_bit(oam_mem[address + 3], 6),
