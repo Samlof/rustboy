@@ -240,8 +240,8 @@ impl Ppu {
         }
         for sprite in (0..40).rev().map(|x| x * 4) {
             let sprite = create_sprite(&self.sprite_memory, sprite, false);
-            if sprite.tile_nr != 255 {
-                println!("Sprite: {:?}", sprite);
+            if sprite.y != 0 && sprite.y < 190 {
+                //println!("Sprite: {:?}", sprite);
             }
         }
     }

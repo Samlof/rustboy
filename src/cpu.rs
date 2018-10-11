@@ -5,16 +5,6 @@ use super::interconnect::*;
 use super::ppu::Color;
 use std::sync::mpsc;
 
-// Clock Speed: 4.194304 MHz
-const CPU_FREQ: f32 = 4.194304;
-
-#[derive(Debug, PartialEq)]
-enum CpuState {
-    On,
-    OffUntilInterrupt,
-    OffUntilButtonPress,
-}
-
 pub struct Cpu {
     reg_a: u8,
     reg_b: u8,
@@ -36,7 +26,8 @@ pub struct Cpu {
 
     pub interconnect: Interconnect,
     cycles: i32,
-    cpu_state: CpuState,
+    halt: bool,
+    stop: bool,
 
     // Debug variables
     print_instructions: bool,
@@ -62,9 +53,10 @@ impl Cpu {
             flag_ime: false,
             flag_disabling_interrupts: false,
             flag_enabling_interrupts: false,
+            halt: false,
+            stop: false,
             interconnect,
             cycles: 0,
-            cpu_state: CpuState::On,
 
             print_instructions: false,
             console_tx: None,
@@ -73,23 +65,25 @@ impl Cpu {
     }
 
     pub fn step(&mut self) {
-        // c1b9 is test failed address
-        // Hand over to interconnect first. So ppu updates
-        self.interconnect.update();
-
         // If cycles to burn, just return
         if self.cycles > 0 {
             self.cycles -= 4;
             return;
         }
-
-        if self.flag_ime
-            && (self.cpu_state == CpuState::On || self.cpu_state == CpuState::OffUntilInterrupt)
-        {
-            self.handle_interrupts();
+        // TODO: Handle stop
+        if self.stop {
+            self.stop = false;
         }
-        if self.cpu_state != CpuState::On {
-            return;
+        // Handle Halt
+        if self.halt {
+            if !self.interconnect.check_interrupt() {
+                return;
+            }
+            self.halt = false;
+        }
+        // Interrupts
+        if self.flag_ime {
+            self.handle_interrupts();
         }
 
         // Handle the change interrupt flags
@@ -114,8 +108,6 @@ impl Cpu {
             tx.send(CpuText::Interrupt(format!("{:?}", interrupt)));
         }
 
-        // If was in OffUntilInterrupt state
-        self.cpu_state = CpuState::On;
         // Disable interrupts
         self.flag_ime = false;
 
@@ -767,7 +759,7 @@ impl Cpu {
                 if self.print_instructions {
                     instruction_string.push_str(&format!("HALT"));
                 }
-                self.cpu_state = CpuState::OffUntilInterrupt;
+                self.halt = true;
             }
             Instruction::STOP => {
                 // STOP always follows a 00
@@ -775,7 +767,7 @@ impl Cpu {
                 if self.print_instructions {
                     instruction_string.push_str(&format!("STOP"));
                 }
-                self.cpu_state = CpuState::OffUntilButtonPress;
+                self.stop = true;
                 self.interconnect.ppu.turn_lcd_off();
             }
             Instruction::DI => {

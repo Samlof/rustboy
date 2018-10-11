@@ -163,6 +163,10 @@ impl Interconnect {
             let start_add = value << 2;
             for i in 0..=0x9F {
                 let val = self.read_mem(start_add as u16 + i);
+
+                if val > 0 {
+                    println!("Sprite area: 0x{:04x}, value: 0x{:02x}", i, val);
+                }
                 self.ppu.write_sprite_mem(0xFE00 + i, val);
             }
             self.ppu.add_cycles(200);
@@ -213,6 +217,15 @@ impl Interconnect {
         None
     }
 
+    pub fn check_interrupt(&self) -> bool {
+        for i in 0..=4 {
+            if check_bit(self.interrupt_flag, i) && check_bit(self.interrupt_enable, i) {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn get_button_interrupt(&mut self) -> Option<Interrupt> {
         if check_bit(self.interrupt_flag, 4) {
             // Clear the interrupt
@@ -232,6 +245,10 @@ impl Interconnect {
                 // joypad interrupt
                 self.interrupt_flag |= 1 << 4;
             }
+        }
+
+        if self.timer.update() {
+            self.interrupt_flag |= 1 << 2;
         }
     }
 
