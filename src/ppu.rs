@@ -238,11 +238,50 @@ impl Ppu {
         if !self.obj_enable() {
             return;
         }
+        let sprite_height = self.obj_height();
+
+        // Loop thru all the sprites
         for sprite in (0..40).rev().map(|x| x * 4) {
             let sprite = create_sprite(&self.sprite_memory, sprite, false);
-            if sprite.y != 0 && sprite.y < 190 {
-                //println!("Sprite: {:?}", sprite);
+            if sprite.y != 0 {
+                if !(self.ly > sprite.y) {}
             }
+            // Check if the sprite is on this line
+            if sprite.y == 0 || self.ly > sprite.y || self.ly < sprite.y - sprite_height {
+                continue;
+            }
+            // Check if x is visible
+            if sprite.x == 0 || sprite.x >= 168 {
+                continue;
+            }
+            // Draw the right line
+            // sprite.y - self.ly gives the distance from bottom of the sprite
+            // sprite_height - that to give it from top
+            let line_to_draw = sprite_height - (sprite.y - self.ly);
+
+            if sprite_height == 8 {
+                let bytes_to_skip = line_to_draw as u16 * 2;
+                let tile_addr = 0x8000 + sprite.tile_nr as u16 * 16;
+                let byte1 = self.get_from_vram(tile_addr + bytes_to_skip);
+                let byte2 = self.get_from_vram(tile_addr + bytes_to_skip + 1);
+
+                for j in 0..8 {
+                    let buffer_col = sprite.x - j;
+                    if buffer_col > VIEWPORT_WIDTH as u8 {
+                        continue;
+                    }
+                    let color = ((byte1 >> j) & 1) | (((byte2 >> j) & 1) << 1);
+                    if color == 0 {
+                        // color of 0 is transparent for sprites
+                        continue;
+                    }
+
+                    self.viewport_buffer
+                        [(self.ly as usize * VIEWPORT_WIDTH) + buffer_col as usize] =
+                        bg_bit_into_color(color);
+                }
+            }
+            // TODO: sprite_height of 16
         }
     }
 
@@ -387,9 +426,9 @@ impl Ppu {
     }
     fn obj_height(&self) -> u8 {
         if self.LCD_control & (1 << 2) > 0 {
-            16 * 8
+            16
         } else {
-            8 * 8
+            8
         }
     }
     fn obj_enable(&self) -> bool {
@@ -447,7 +486,7 @@ struct Sprite {
 
 fn create_sprite(oam_mem: &[u8], address: usize, cgb_mode: bool) -> Sprite {
     Sprite {
-        y: oam_mem[address],
+        y: oam_mem[address] - 8,
         x: oam_mem[address + 1],
         tile_nr: oam_mem[address + 2],
         above_bg: !check_bit(oam_mem[address + 3], 7),

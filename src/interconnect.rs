@@ -159,14 +159,10 @@ impl Interconnect {
 
     fn io_port_write(&mut self, address: u16, value: u8) {
         if address == 0xFF46 {
-            // Start dma
-            let start_add = value << 2;
+            // dma, move chosen area to sprite mem
+            let start_add = (value as u16) << 8;
             for i in 0..=0x9F {
-                let val = self.read_mem(start_add as u16 + i);
-
-                if val > 0 {
-                    println!("Sprite area: 0x{:04x}, value: 0x{:02x}", i, val);
-                }
+                let val = self.read_mem(start_add + i);
                 self.ppu.write_sprite_mem(0xFE00 + i, val);
             }
             self.ppu.add_cycles(200);
