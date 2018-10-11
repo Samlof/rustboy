@@ -198,7 +198,8 @@ impl Ppu {
     }
 
     pub fn turn_lcd_off(&mut self) {
-        // TODO:
+        self.disable_lcd();
+        // TODO: pause ppu and draw black?
     }
     pub fn read(&self, address: u16) -> Option<u8> {
         match address {
@@ -218,6 +219,9 @@ impl Ppu {
     }
 
     pub fn pixel_transfer(&mut self) {
+        if !self.lcd_display_enabled() {
+            return;
+        }
         self.draw_background();
         self.draw_sprites();
     }
@@ -401,7 +405,14 @@ impl Ppu {
         true
     }
 
-    fn lcd_display_enable(&self) -> bool {
+    fn disable_lcd(&mut self) {
+        self.LCD_control &= !(1 << 7);
+    }
+
+    fn enable_lcd(&mut self) {
+        self.LCD_control |= 1 << 7;
+    }
+    fn lcd_display_enabled(&self) -> bool {
         self.LCD_control & (1 << 7) > 0
     }
     fn window_tile_map_address(&self) -> u16 {
