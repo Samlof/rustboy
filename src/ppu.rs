@@ -107,7 +107,6 @@ pub struct Ppu {
     vram: Box<[u8]>,
 
     buffer: Vec<u8>,
-    sprites: Vec<Sprite>,
     viewport_buffer: Vec<u32>,
 
     cycles: i32,
@@ -135,7 +134,6 @@ impl Ppu {
             main_window: create_window(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "Rustboy", Scale::X4),
 
             buffer: vec![0; WIDTH * HEIGHT],
-            sprites: Vec::with_capacity(20),
             viewport_buffer: vec![0; VIEWPORT_WIDTH * VIEWPORT_HEIGHT],
             cycles: 0,
             state: State::OAMSearch,
@@ -152,8 +150,6 @@ impl Ppu {
         match self.state {
             State::OAMSearch => {
                 self.cycles = 20;
-                // Find sprites
-                self.oam_search();
                 // Change status
                 self.state = State::PixelTransfer;
                 self.LCDC_status |= 0b11;
@@ -201,19 +197,6 @@ impl Ppu {
         return false;
     }
 
-    fn oam_search(&mut self) {
-        self.sprites.clear();
-        // One sprite has 4 bytes
-        for i in (0..40).map(|x| x * 4) {
-            let sprite = create_sprite(&self.sprite_memory, i, false);
-            // Filter only sprites visible
-            if self.scy < sprite.y && self.scy > sprite.y.saturating_sub(16) {
-                if sprite.x > 0 && sprite.x < 168 {
-                    self.sprites.push(sprite);
-                }
-            }
-        }
-    }
     pub fn turn_lcd_off(&mut self) {
         // TODO:
     }
@@ -248,22 +231,17 @@ impl Ppu {
                 bg_bit_into_color(color);
         }
 
-        // Draw sprites
-        for s in self.sprites.iter() {
-            println!("Drawing sprite: {}", s.tile_nr);
-            let byte1 = self.get_from_vram(0x8000 + s.tile_nr as u16 * 16);
-            let byte2 = self.get_from_vram(0x8000 + s.tile_nr as u16 * 16 + 1);
+        self.draw_sprites();
+    }
 
-            let start_x = s.x;
-            let sprite_y = s.y - self.ly;
-            for j in 0..8 {
-                if j > start_x || start_x - j > WIDTH as u8 {
-                    continue;
-                }
-                let x = start_x - j;
-                let color = (byte1 >> (7 - j) & 1) | ((byte2 >> (7 - j) & 1) << 1);
-                self.viewport_buffer[(self.ly as usize * VIEWPORT_WIDTH) + x as usize] =
-                    bg_bit_into_color(color);
+    fn draw_sprites(&mut self) {
+        if !self.obj_enable() {
+            return;
+        }
+        for sprite in (0..40).rev().map(|x| x * 4) {
+            let sprite = create_sprite(&self.sprite_memory, sprite, false);
+            if sprite.tile_nr != 255 {
+                println!("Sprite: {:?}", sprite);
             }
         }
     }
@@ -455,6 +433,7 @@ impl Ppu {
     }
 }
 
+#[derive(Debug)]
 struct Sprite {
     y: u8,
     x: u8,

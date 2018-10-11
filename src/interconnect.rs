@@ -74,7 +74,9 @@ impl Interconnect {
                 self.internal_ram2[(address - INTERNAL_RAM2_START) as usize] = value;
             }
             SPRITE_MEM_START..SPRITE_MEM_END => {
-                println!("Sprite area: 0x{:04x}, value: 0x{:02x}", address, value);
+                if value > 0 {
+                    panic!("Sprite area: 0x{:04x}, value: 0x{:02x}", address, value);
+                }
                 self.ppu.write_sprite_mem(address, value);
             }
             INTERRUPT_REGISTER => self.interrupt_enable = value,
@@ -158,10 +160,10 @@ impl Interconnect {
     fn io_port_write(&mut self, address: u16, value: u8) {
         if address == 0xFF46 {
             // Start dma
-            let start_add = address << 2;
-            for i in 0..0xA0 {
-                let val = self.read_mem(start_add + i);
-                self.write_mem(0xFE00 + i, val);
+            let start_add = value << 2;
+            for i in 0..=0x9F {
+                let val = self.read_mem(start_add as u16 + i);
+                self.ppu.write_sprite_mem(0xFE00 + i, val);
             }
             self.ppu.add_cycles(200);
             return;

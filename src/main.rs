@@ -38,17 +38,17 @@ const MS_PER_FRAME: u64 = ((1 as f32 / FPS as f32) * 1000.0) as u64;
 fn main() -> io::Result<()> {
     let boot = read_file("resources/boot/DMG_ROM.bin")?;
     let rom = cartridge::Cartridge::new(read_file("resources/roms/Tetris-USA.gb")?);
-    /*
+
     let rom = cartridge::Cartridge::new(read_file(
         "resources/roms/cpu_instrs/individual/03-op sp,hl.gb",
     )?);
-    */
+
     let ic = interconnect::Interconnect::new(boot, rom);
     let mut cpu = cpu::Cpu::new(ic);
 
     let (tx, rx) = channel::<console::CpuText>();
 
-    cpu.set_console_tx(tx);
+    //cpu.set_console_tx(tx);
     cpu.set_print_instruction(false);
     let fps_cap = true;
 

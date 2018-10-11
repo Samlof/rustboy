@@ -41,6 +41,8 @@ pub struct Cpu {
     // Debug variables
     print_instructions: bool,
     console_tx: Option<mpsc::Sender<CpuText>>,
+
+    test_counter: i64,
 }
 
 impl Cpu {
@@ -66,6 +68,7 @@ impl Cpu {
 
             print_instructions: false,
             console_tx: None,
+            test_counter: 0,
         }
     }
 
@@ -101,14 +104,6 @@ impl Cpu {
         self.do_next_instrution();
     }
 
-    fn send_instr_text(&self, str: String) {
-        println!("{}", str);
-        return;
-        if let Some(ref tx) = self.console_tx {
-            tx.send(CpuText::Instruction(str));
-        }
-    }
-
     fn handle_interrupts(&mut self) {
         let interrupt = match self.interconnect.get_interrupt() {
             Some(i) => i,
@@ -133,6 +128,14 @@ impl Cpu {
             Interrupt::SerialTransfer => 0x0058,
             Interrupt::Joypad => 0x0060,
         };
+    }
+
+    fn send_instr_text(&self, str: String) {
+        println!("{}", str);
+        return;
+        if let Some(ref tx) = self.console_tx {
+            tx.send(CpuText::Instruction(str));
+        }
     }
 
     fn do_next_instrution(&mut self) {
@@ -341,13 +344,11 @@ impl Cpu {
             Instruction::LD_nn_SP => {
                 let nn = u8s_as_u16(self.read_nn());
                 if self.print_instructions {
-                    instruction_string.push_str(&format!("LD nn, SP"));
+                    instruction_string.push_str(&format!("LD (${:04x}), SP", nn));
                 }
-                // FIXME: Should add 1 here?
-                self.reg_sp = nn;
-
-                // Have to add 8 more to total 20
-                self.add_cycles(8);
+                let (high, low) = u16_as_u8s(self.reg_sp);
+                self.write_mem(nn, low);
+                self.write_mem(nn + 1, high);
             }
 
             Instruction::PUSH_nn => {
@@ -472,7 +473,7 @@ impl Cpu {
                     }
                     self.read_reg_r(n)
                 };
-                // FIXME: sign extend??
+
                 let result = self.reg_a as i16 - n as i16;
                 let carrybits = (self.reg_a ^ n) as i16 ^ result;
                 self.reg_a = result as u8;
@@ -495,14 +496,16 @@ impl Cpu {
                     }
                     self.read_reg_r(n)
                 };
-                let carry = self.flag_c() as i16;
-                // FIXME: sign extend??
-                let result = self.reg_a as i16 - n as i16 - carry;
+                let carry = if self.flag_c() { 1 } else { 0 };
 
-                self.set_flag_z(result as u8 == 0);
+                let result = self.reg_a as i16 - n as i16 - carry;
+                let carrybits = (self.reg_a ^ n) as i16 ^ carry ^ result;
+                self.reg_a = result as u8;
+
+                self.set_flag_z(self.reg_a == 0);
                 self.set_flag_n(true);
-                self.set_flag_c(result < 0);
-                self.set_flag_h((self.reg_a as i16 & 0xF) - (n as i16 & 0xF) - carry < 0);
+                self.set_flag_h(carrybits & 0x10 != 0);
+                self.set_flag_c(carrybits & 0x100 != 0);
             }
             Instruction::AND_n(n) => {
                 let n = if n == 8 {
@@ -641,8 +644,8 @@ impl Cpu {
                 let result = self.hl() as u32 + nn;
 
                 self.set_flag_n(false);
-                self.set_flag_h((self.hl() as u32 & 0xFFF) + (nn & 0xFFF) > 0xFFF);
-                self.set_flag_c(result > 0xFFFF);
+                self.set_flag_h(((self.hl() as u32 ^ nn) ^ (result & 0xFFFF)) & 0x1000 > 0);
+                self.set_flag_c(result & 0x10000 > 0);
 
                 self.set_hl(result as u16);
 
@@ -1170,6 +1173,10 @@ impl Cpu {
                     self.write_reg_r(n, value);
                 }
             }
+
+            if self.print_instructions {
+                self.send_instr_text(instruction_string);
+            }
         }
     }
 
@@ -1178,9 +1185,9 @@ impl Cpu {
         self.write_mem(self.reg_sp, value);
     }
     fn push_stack_u16(&mut self, value: u16) {
-        let (first, second) = u16_as_u8s(value);
-        self.push_stack(first);
-        self.push_stack(second);
+        let (high, low) = u16_as_u8s(value);
+        self.push_stack(high);
+        self.push_stack(low);
     }
     fn pop_stack(&mut self) -> u8 {
         // Add first, so we are reading the old value
@@ -1190,10 +1197,9 @@ impl Cpu {
         ret
     }
     fn pop_stack_u16(&mut self) -> u16 {
-        // Saving and reading are in opposite directions
-        let second = self.pop_stack();
-        let first = self.pop_stack();
-        u8s_as_u16((first, second))
+        let low = self.pop_stack();
+        let high = self.pop_stack();
+        u8s_as_u16((high, low))
     }
 
     fn add_cycles(&mut self, amount: i32) {
