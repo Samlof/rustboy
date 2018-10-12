@@ -27,8 +27,10 @@ impl Console {
                 CpuText::Instruction(string) => string,
                 _ => String::new(),
             };
-            handle.write(string.as_bytes());
-            handle.write(b"\n");
+            if string.len() > 1 {
+                handle.write(string.as_bytes());
+                handle.write(b"\n");
+            }
         }
     }
 }

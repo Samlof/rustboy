@@ -123,7 +123,7 @@ impl Cpu {
     }
 
     fn send_instr_text(&self, str: String) {
-        println!("{}", str);
+        println!("got: {}", str);
         return;
         if let Some(ref tx) = self.console_tx {
             tx.send(CpuText::Instruction(str));

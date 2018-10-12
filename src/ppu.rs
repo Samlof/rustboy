@@ -248,20 +248,17 @@ impl Ppu {
         let sprite_height = self.obj_height();
 
         // Loop thru all the sprites
-        for sprite in (0..40).rev().map(|x| x * 4) {
+        for sprite in (0..40).map(|x| x * 4) {
             let sprite = create_sprite(&self.sprite_memory, sprite, false);
-            if sprite.y != 0 {
-                if !(self.ly > sprite.y) {}
-            }
             // Check if the sprite is on this line
-            if sprite.y == 0 || self.ly < sprite.y || self.ly >= sprite.y + sprite_height {
+            if self.ly < sprite.y || self.ly >= sprite.y + sprite_height {
                 continue;
             }
             // Check if x is visible
+            // FIXME:
             if sprite.x == 0 || sprite.x >= 168 {
-                continue;
+                //continue;
             }
-            println!("sprite y: {}, ly: {}", sprite.y, self.ly);
             // Draw the right line
             // sprite.y - self.ly gives the distance from bottom of the sprite
             // sprite_height - that to give it from top
@@ -510,17 +507,6 @@ fn create_sprite(oam_mem: &[u8], address: usize, cgb_mode: bool) -> Sprite {
         palette_nr: oam_mem[address + 3] & if cgb_mode { 0x07 } else { 0x10 },
         tile_vram_bank: oam_mem[address + 3] & 0x08,
     }
-}
-fn pause() {
-    println!("Paused!");
-    use std::io;
-
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(n) => {}
-        Err(error) => println!("error: {}", error),
-    }
-    println!("Continued!")
 }
 
 fn create_window(width: usize, height: usize, title: &str, scale: Scale) -> Window {
